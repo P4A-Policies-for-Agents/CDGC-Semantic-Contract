@@ -1,0 +1,52 @@
+# ─── Build artifacts ───
+target/
+**/target/
+.pdk/
+**/.pdk/
+.exchange/
+**/.exchange/
+
+# ─── Flex playground local state ───
+registration.yaml
+certificate.yaml
+**/playground/config/registration.yaml
+**/playground/config/certificate.yaml
+**/playground/config/custom-policies/*
+!**/playground/config/custom-policies/note.txt
+
+# ─── Credentials / secrets — NEVER commit or push ───
+*.pem
+*.key
+*.p12
+*.jks
+*.keystore
+.env
+.env.*
+*.secret
+*.secrets
+secrets.json
+**/config.local.json
+
+# ─── Local demo config (real creds, live IDs, tenant hosts) — stays LOCAL ───
+# The live demo runs from these; only the *.example templates (placeholders) are tracked.
+demo/config.json
+demo/env.local.sh
+demo/*.local.sh
+demo/*.local.json
+demo/secrets*
+demo/*.png
+demo/*.mov
+demo/*.mp4
+# Belt-and-suspenders: always keep the placeholder templates tracked.
+!demo/*.example
+
+# ─── Python / editor / OS ───
+__pycache__/
+*.pyc
+.venv/
+venv/
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp

@@ -1,0 +1,23 @@
+{
+  "protocolVersion": "2025-03-26",
+  "transport": { "kind": "streamableHttp", "path": "/mcp" },
+  "capabilities": { "tools": { "listChanged": true } },
+  "tools": [
+    {
+      "name": "get_customer_profiles",
+      "description": "Return Customer 360 Profile records (name, segment, email, phone, marketing consent and engagement attributes) for the Customer 360 Profile data product. In Informatica CDGC this product's fields are bound to Business Terms carrying catalog-authored meanings and IDMC Security Levels — email_address is classified Restricted (personal data) and marketing_consent is Confidential. The CDGC Semantic Contract policy on this gateway resolves those meanings and classifications live and attaches, to each successful tool result, a semantic contract for the governed fields present in the payload: the governing term, its meaning, its Security Level and the handling obligation. The upstream payload is never rewritten, only annotated; no model sits in the data path.",
+      "inputSchema": { "type": "object", "properties": {
+        "segment": { "type": "string", "description": "customer segment to query, e.g. all, enterprise, smb" } } },
+      "outputSchema": { "type": "object", "properties": {
+        "profiles": { "type": "array" }, "count": { "type": "integer" } } }
+    },
+    {
+      "name": "get_product_catalog",
+      "description": "Return Product Catalog records (product name, category, supplier, unit cost, list price) for the Product Catalog data product. In Informatica CDGC this product's fields are bound to Business Terms carrying catalog meanings and IDMC Security Levels — unit_cost and list_price are classified Confidential (commercially sensitive, not personal data). The same CDGC Semantic Contract policy attaches, to each successful tool result, the semantic contract for the governed fields present: term, meaning, Security Level and handling obligation, resolved live from the catalog and versioned there independently of this API. The payload itself is passed through byte-identical; the contract is additive guidance for the reading agent.",
+      "inputSchema": { "type": "object", "properties": {
+        "category": { "type": "string", "description": "product category to query, e.g. all, hardware, subscription" } } },
+      "outputSchema": { "type": "object", "properties": {
+        "products": { "type": "array" }, "count": { "type": "integer" } } }
+    }
+  ]
+}

@@ -1,0 +1,191 @@
+---
+apiVersion: gateway.mulesoft.com/v1alpha1
+kind: Extension
+metadata:
+  labels:
+    title: CDGC Semantic Contract
+    category: MCP
+    description: >-
+      Fail-open annotator: attaches CDGC-resolved meaning, classification and
+      handling obligations to the governed fields present in a successful result
+      (structuredContent._semanticContract + content[] block). Passthrough
+      otherwise. Outbound; MCP, A2A, REST.
+    metadata/capabilities/injectionPoint: outbound
+    metadata/capabilities/assetTypes: mcp,rest,http
+    metadata/interfaceScope: api,resource
+spec:
+  extends:
+    - name: extension-definition
+      namespace: default
+  properties:
+    cdgcLoginUrl:
+      type: string
+      format: service
+      description: IDMC login base URL, e.g. https://dm-us.informaticacloud.com.
+    cdgcSearchUrl:
+      type: string
+      format: service
+      description: >-
+        CDGC search API base (the cdgc-api host serving ccgf-searchv2), e.g.
+        https://cdgc-api.dm-us.informaticacloud.com. The policy appends
+        /ccgf-searchv2/api/v1/search.
+    cdgcOrgUsername:
+      type: string
+      description: IDMC read-only service-account username.
+      "@context": { "@characteristics": [security:sensitive] }
+    cdgcOrgPassword:
+      type: string
+      description: IDMC service-account password.
+      "@context": { "@characteristics": [security:sensitive] }
+    schemaId:
+      type: string
+      description: >-
+        Optional. CDGC asset id of the scanned schema — a flat file, table, etc. —
+        this API fronts. Its governed columns, their linked Business Terms'
+        meanings (descriptions) and Security Levels are the semantic content
+        attached to the response. No per-field config. Used as the DEFAULT /
+        fallback when no toolSchemas or pathSchemas mapping matches the call. If a
+        call matches no mapping and no default is set, the response passes through
+        unannotated (fail-open — nothing to bind against).
+    toolSchemas:
+      type: array
+      items:
+        type: string
+      default: []
+      description: >-
+        Per-tool schema routing for MCP servers that expose several tools, each
+        fronting a different scanned schema. Each entry is `<toolName>=<schemaId>`
+        (e.g. get_customer_profiles=b75b6eb4-...). On a tools/call the invoked tool
+        name selects its bound schema; a tool with no entry falls back to schemaId.
+        Tool names are case-sensitive. Admin-owned coarse routing — the catalog
+        stays authoritative for the meanings and classifications.
+    pathSchemas:
+      type: array
+      items:
+        type: string
+      default: []
+      description: >-
+        Per-path schema routing for REST/HTTP APIs that front several schemas. Each
+        entry is `<pathPrefix>=<schemaId>` (e.g. /v1/customers=b75b6eb4-...). The
+        longest matching path prefix wins; a request matching none falls back to
+        schemaId. (Prefixes match on path-segment boundaries.)
+    schemaIdHeader:
+      type: string
+      default: x-dp-schema-id
+      description: Optional request header overriding schemaId per request (multi-product).
+    schemaIdClaim:
+      type: string
+      description: >-
+        Optional JWT claim name to read schemaId from. When set and present in the
+        caller's (upstream-validated) Bearer token, the claim wins over
+        schemaIdHeader — so a spoofed header can't redirect the lookup. Unset
+        (default) = header/config only. Requires a JWT Validation policy upstream.
+    restrictedObligation:
+      type: string
+      default: "Restricted / PII. Do not disclose externally; use only for the stated purpose; minimise retention."
+      description: >-
+        Handling obligation attached for a field whose Business Term is classified
+        RESTRICTED (the most sensitive tier). Free-text, operator-authored — an
+        empty string means no obligation to state for this tier.
+    confidentialObligation:
+      type: string
+      default: "Confidential. Need-to-know internal use; do not disclose to customers or third parties."
+      description: >-
+        Handling obligation attached for a field classified CONFIDENTIAL. Empty
+        string = no obligation to state for this tier.
+    internalObligation:
+      type: string
+      default: "Internal use only. Not for external distribution."
+      description: >-
+        Handling obligation attached for a field classified INTERNAL. Empty string
+        = no obligation to state for this tier.
+    publicObligation:
+      type: string
+      default: ""
+      description: >-
+        Handling obligation attached for a field classified PUBLIC. Empty (default)
+        = nothing to state for public data.
+    restrictedMarkers:
+      type: array
+      items:
+        type: string
+      default: ["personal data", "pii", "restricted", "ssn", "national id", "sensitive personal"]
+      description: >-
+        Case-insensitive substrings that infer a RESTRICTED classification from a
+        Business Term's description when it carries no structured IDMC Security
+        Level. The structured level always wins when present; markers are the
+        fallback. Most-restrictive marker wins across tiers.
+    confidentialMarkers:
+      type: array
+      items:
+        type: string
+      default: ["confidential", "consent", "proprietary"]
+      description: >-
+        Description substrings inferring CONFIDENTIAL when no structured Security
+        Level is present (fallback; structured level wins).
+    internalMarkers:
+      type: array
+      items:
+        type: string
+      default: ["internal use", "internal only"]
+      description: >-
+        Description substrings inferring INTERNAL when no structured Security Level
+        is present (fallback; structured level wins).
+    publicMarkers:
+      type: array
+      items:
+        type: string
+      default: []
+      description: >-
+        Description substrings inferring PUBLIC when no structured Security Level is
+        present (fallback; structured level wins). Empty (default) = no PUBLIC markers.
+    annotateFieldsPresentOnly:
+      type: boolean
+      default: true
+      description: >-
+        true (default) attaches guidance only for governed fields that actually
+        appear in the response payload (quiet + relevant; a payload with no
+        governed field is left byte-identical). false attaches every governed
+        field in the schema regardless of what the payload contains.
+    maxContractEntries:
+      type: integer
+      default: 24
+      minimum: 1
+      description: >-
+        Cap on the number of field entries attached (most-restrictive first),
+        bounding the annotation's token cost on wide schemas.
+    maxMeaningChars:
+      type: integer
+      default: 400
+      minimum: 16
+      description: >-
+        Per-field cap (chars) on the attached catalog meaning; longer descriptions
+        are clipped with an ellipsis so a verbose term can't blow the token budget.
+    maxAnnotateBytes:
+      type: integer
+      default: 262144
+      minimum: 0
+      description: >-
+        Response bodies larger than this (bytes) pass through byte-identical
+        without annotation — the policy buffers a single-shot response to rewrite
+        it, and this bounds that buffer. Default 256 KiB.
+    refreshIntervalSeconds:
+      type: integer
+      default: 86400
+      minimum: 30
+      description: >-
+        Cache TTL for a schema's derived field→meaning/classification map before a
+        lazy CDGC refresh. Meanings change rarely, so this defaults high (24 hours).
+    distributed:
+      type: boolean
+      default: false
+      description: Share the cached map + refresh lock across replicas (needs shared storage).
+    timeout:
+      type: integer
+      default: 5000
+      description: Per-call CDGC timeout (ms), clamped to a chained refresh budget (~15s).
+  required:
+    - cdgcLoginUrl
+    - cdgcSearchUrl
+    - cdgcOrgUsername
+    - cdgcOrgPassword

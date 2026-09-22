@@ -1,0 +1,36 @@
+# Copyright 2026 Salesforce, Inc. All rights reserved.
+[package]
+name = "cdgc_semantic_contract"
+version = "1.0.1"
+rust-version = "1.88.0"
+edition = "2018"
+resolver = "2"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[package.metadata.anypoint]
+group_id = "030e0aac-30d9-460f-9234-428c16a123c4"
+definition_asset_id = { name = "cdgc-semantic-contract", version = "1.0.1" }
+implementation_asset_id = "cdgc-semantic-contract-flex"
+
+[dependencies]
+# No enable_stop_iteration: this policy is a response-leg, fail-open annotator —
+# it never Breaks the flow, it only (additively) rewrites a successful response
+# body. It buffers a single-shot response, so no stop-iteration is needed.
+pdk = { version = "1.10.0" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = { version = "1.0", default-features = false, features = ["alloc"] }
+anyhow = "1.0"
+
+[dev-dependencies]
+pdk-test = { version = "1.10.0" }
+httpmock = "0.6"
+reqwest = "0.11"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[profile.release]
+lto = true
+opt-level = 'z'
+strip = "debuginfo"

@@ -1,0 +1,20 @@
+{
+  "_comment": "Copy to demo/config.json (gitignored) and fill in. Local-only — NEVER commit real credentials.",
+  "cdgcLoginUrl": "https://dm-us.informaticacloud.com",
+  "cdgcSearchUrl": "https://cdgc-api.dm-us.informaticacloud.com",
+  "cdgcOrgUsername": "<idmc-username>",
+  "cdgcOrgPassword": "<idmc-password>",
+  "_schemaId_comment": "OPTIONAL default/fallback schema. Set it for a single-tool server, or as a fallback for tools not listed in toolSchemas. A call resolving to no schema passes through UNANNOTATED (fail-open — nothing to bind against). This demo routes purely by toolSchemas and omits the default.",
+  "_toolSchemas_comment": "Per-tool schema routing: one MCP server, several tools, each bound to its own scanned schema. Each entry is <toolName>=<schemaId>.",
+  "toolSchemas": [
+    "get_customer_profiles=<customer-360-schema-id>",
+    "get_product_catalog=<product-catalog-schema-id>"
+  ],
+  "_pathSchemas_comment": "REST-only analog: <pathPrefix>=<schemaId>, longest prefix wins. e.g. [\"/v1/customers=<id>\", \"/v1/products=<id>\"].",
+  "_obligations_comment": "Optional per-Security-Level handling obligations attached to matching fields. Omit to take the built-in defaults; set to \"\" to say nothing for that tier.",
+  "_annotate_comment": "annotateFieldsPresentOnly (default true) attaches only for governed fields that appear in the payload; maxContractEntries / maxMeaningChars / maxAnnotateBytes bound the annotation's size.",
+  "_demo_notes": {
+    "get_customer_profiles": "Customer 360 Profile — email_address (Restricted) + marketing_consent (Confidential) annotate",
+    "get_product_catalog": "Product Catalog — unit_cost + list_price (Confidential) annotate"
+  }
+}
