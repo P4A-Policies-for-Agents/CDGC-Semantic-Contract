@@ -28,7 +28,7 @@ results are; a REST response is annotated as a top-level `_semanticContract`.
 
 ---
 
-## How it annotates — CDGC schema → Business Term → meaning + classification
+## How it annotates — CDGC schema → Business Term → meaning + classification + attributes
 
 A data product's tool is bound to a scanned Informatica CDGC **schema**. A single MCP server (or
 API) can expose **several tools, each fronting a different schema** — the policy's
@@ -44,9 +44,11 @@ schema) it authenticates to IDMC (**Login → JWT**) and walks the catalog via *
 1. resolve the schema asset by `core.identity` → its `core.location`,
 2. enumerate the schema's columns (children of that location),
 3. resolve each column's Business-Term link (`IClassTechnicalGlossaryBase` relationship),
-4. resolve the linked terms' names, **description (the meaning)**, and structured **IDMC
-   Security Level** (`securityClassification`),
-5. build the field → term → meaning/classification map: one entry per column.
+4. resolve the linked terms' names, **description (the meaning)**, structured **IDMC
+   Security Level** (`securityClassification`), and — from the same term document's
+   `sourceAsMap` — any configured **extra attributes** ([`termAttributes`](#extra-business-term-attributes-termattributes),
+   captured present-only, no extra CDGC calls),
+5. build the field → term → meaning/classification/**attributes** map: one entry per column.
 
 **Classification resolution** per field: the term's structured Security Level
 (`Public`/`Internal`/`Confidential`/`Restricted`) wins when present; otherwise it is inferred
