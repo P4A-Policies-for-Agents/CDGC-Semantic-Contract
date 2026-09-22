@@ -9,7 +9,7 @@ sibling `../cdgc-semantic-contract-flex/`.
 | File | Role |
 |---|---|
 | `gcl.yaml` | Policy metadata (title, category `MCP`, injection point `outbound`, asset types `mcp,rest,http`, interface scope `api,resource`) and the full configuration schema. |
-| `exchange.json` | Exchange coordinates (groupId `030e0aac-30d9-460f-9234-428c16a123c4` / assetId `cdgc-semantic-contract` / version `1.0.0`). |
+| `exchange.json` | Exchange coordinates (groupId `030e0aac-30d9-460f-9234-428c16a123c4` / assetId `cdgc-semantic-contract` / version `1.0.2`). |
 | `Makefile` | `make release` builds and publishes the definition asset via `anypoint-cli-v4 pdk policy-definition`. |
 
 > **Outbound.** This is a response-leg policy (`injectionPoint: outbound`), so applying it in

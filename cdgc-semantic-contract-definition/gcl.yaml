@@ -69,6 +69,27 @@ spec:
         entry is `<pathPrefix>=<schemaId>` (e.g. /v1/customers=b75b6eb4-...). The
         longest matching path prefix wins; a request matching none falls back to
         schemaId. (Prefixes match on path-segment boundaries.)
+    termAttributes:
+      type: array
+      items:
+        type: string
+      default:
+        - "core.externalId=Reference ID"
+        - "com.infa.ccgf.models.governance.BusinessLogic=Business Logic"
+        - "com.infa.ccgf.models.governance.Examples=Examples"
+        - "com.infa.ccgf.models.governance.FormatType=Format Type"
+        - "com.infa.ccgf.models.governance.FormatDescription=Format Description"
+        - "com.infa.ccgf.models.governance.isCDE=Critical Data Element"
+      description: >-
+        Extra Business Term fields surfaced in the semantic contract when populated
+        on the term (present-only — an empty/absent field is omitted). Each entry is
+        `<catalogKey>=<label>`; the label is what the agent sees. Values keep their
+        catalog type (Examples stays an array, Critical Data Element a boolean).
+        Defaults cover Reference ID, Business Logic, Examples, Format Type/Description
+        and Critical Data Element. To add Alias Names / synonyms, append an entry with
+        that field's catalog attribute key (varies by tenant),
+        e.g. com.infa.ccgf.models.governance.Synonym=Alias Names. Empty array = no
+        extra attributes (meaning + classification + obligation only).
     schemaIdHeader:
       type: string
       default: x-dp-schema-id

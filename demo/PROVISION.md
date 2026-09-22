@@ -20,7 +20,7 @@ Level (or a description-keyword marker) so the attached contract shows real cata
 | Exchange asset (MCP server) | `semantic-contract-demo/1.0.0` (type `mcp`) |
 | API Manager instance | `<apiInstanceId>` (label `semantic-contract-demo`) |
 | Flex gateway target | omni-gw-small (has a public URL) |
-| Applied policies | **MCP Support** (order 1) + `cdgc-semantic-contract` **1.0.0** (id `<policyId>`) |
+| Applied policies | **MCP Support** (order 1) + `cdgc-semantic-contract` **1.0.2** (id `<policyId>`) |
 | Governed schema — `get_customer_profiles` | Customer 360 Profile `<customer360SchemaId>` |
 | Governed schema — `get_product_catalog` | Product Catalog `<productCatalogSchemaId>` |
 | Tool→schema routing | policy `toolSchemas`: `get_customer_profiles=<c360>`, `get_product_catalog=<prod>` |
@@ -104,7 +104,7 @@ anypoint-cli-v4 api-mgr:api:describe <apiInstanceId> --environment Sandbox
 
 cp config.json.example config.json   # fill creds + toolSchemas map
 anypoint-cli-v4 api-mgr:policy:apply <apiInstanceId> cdgc-semantic-contract \
-  --environment Sandbox --groupId <orgId> --policyVersion 1.0.0 \
+  --environment Sandbox --groupId <orgId> --policyVersion 1.0.2 \
   --upstreamId <upstreamId> --configFile ./config.json
 anypoint-cli-v4 api-mgr:api:redeploy <apiInstanceId> --environment Sandbox
 ```

@@ -51,6 +51,8 @@ pub struct Config {
     pub schema_id_claim: Option<String>,
     #[serde(alias = "schemaIdHeader")]
     pub schema_id_header: Option<String>,
+    #[serde(alias = "termAttributes")]
+    pub term_attributes: Option<Vec<String>>,
     #[serde(alias = "timeout")]
     pub timeout: Option<i64>,
     #[serde(alias = "toolSchemas")]

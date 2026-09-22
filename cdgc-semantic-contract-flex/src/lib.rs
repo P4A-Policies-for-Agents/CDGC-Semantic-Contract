@@ -49,9 +49,10 @@ use serde_json::{json, Map, Value};
 
 use crate::generated::config::Config;
 use crate::semantic::{
-    build_contract, build_markers, build_obligations, collect_present_keys, nonce_from_time,
-    render_block, resolve_classification, resolve_mapped_schema, resolve_path_schema, CachedClassMap,
-    ContractField, GovernedField, MarkerRules, Obligations, RefreshLock,
+    build_contract, build_markers, build_obligations, capture_term_attributes, collect_present_keys,
+    nonce_from_time, parse_term_attributes, render_block, resolve_classification, resolve_mapped_schema,
+    resolve_path_schema, CachedClassMap, ContractField, GovernedField, MarkerRules, Obligations,
+    RefreshLock, TermAttribute,
 };
 
 const CLASS_CACHE_NAMESPACE: &str = "csc-classmap";
@@ -92,6 +93,19 @@ const DEFAULT_CONFIDENTIAL_OBLIGATION: &str =
     "Confidential. Need-to-know internal use; do not disclose to customers or third parties.";
 const DEFAULT_INTERNAL_OBLIGATION: &str = "Internal use only. Not for external distribution.";
 const DEFAULT_PUBLIC_OBLIGATION: &str = ""; // Public: nothing to state.
+
+// Extra Business Term attributes surfaced in the contract when populated on the
+// term (present-only). `<catalogKey>=<label>`; used when `termAttributes` is
+// unset. Alias Names/synonyms is left as a config slot (its catalog key varies by
+// tenant) — add it here or via config once known.
+const DEFAULT_TERM_ATTRIBUTES: &[&str] = &[
+    "core.externalId=Reference ID",
+    "com.infa.ccgf.models.governance.BusinessLogic=Business Logic",
+    "com.infa.ccgf.models.governance.Examples=Examples",
+    "com.infa.ccgf.models.governance.FormatType=Format Type",
+    "com.infa.ccgf.models.governance.FormatDescription=Format Description",
+    "com.infa.ccgf.models.governance.isCDE=Critical Data Element",
+];
 
 const CONTRACT_VERSION: &str = "1.0";
 const CONTRACT_SOURCE: &str = "informatica-cdgc";
@@ -160,6 +174,19 @@ fn obligations(config: &Config) -> Obligations {
         DEFAULT_PUBLIC_OBLIGATION,
     )
 }
+/// The configured extra Business Term attributes to surface (`termAttributes`),
+/// falling back to the code defaults when unset. An explicit empty array in
+/// config means "surface no extra attributes".
+fn term_attribute_specs(config: &Config) -> Vec<(String, String)> {
+    match config.term_attributes.as_deref() {
+        Some(entries) => parse_term_attributes(entries),
+        None => {
+            let defaults: Vec<String> = DEFAULT_TERM_ATTRIBUTES.iter().map(|s| s.to_string()).collect();
+            parse_term_attributes(&defaults)
+        }
+    }
+}
+
 /// Per-call schema routing: pick the CDGC schemaId this call binds to (toolSchemas
 /// for MCP tool name, pathSchemas for REST path). Returns `None` when no mapping
 /// matches (the caller then falls back to a claim/header/default).
@@ -252,6 +279,7 @@ async fn fetch_class_map(
     schema_id: &str,
 ) -> Result<(Vec<GovernedField>, Option<String>, Option<String>)> {
     let start = clock.now();
+    let attr_specs = term_attribute_specs(config);
     let (jwt, org) = cdgc_auth(client, config, clock, start).await?;
 
     // 1. Resolve the schema asset → location + identity.
@@ -294,8 +322,10 @@ async fn fetch_class_map(
         }
     }
 
-    // 4. Resolve the linked terms → name + structured Security Level + description.
+    // 4. Resolve the linked terms → name + structured Security Level + description
+    //    + any configured extra attributes present on the term (present-only).
     let mut terms: Map<String, Value> = Map::new(); // termId → {name, level, description}
+    let mut term_attrs: std::collections::HashMap<String, Vec<TermAttribute>> = std::collections::HashMap::new();
     if !term_ids.is_empty() {
         let tdocs = cdgc_search(client, config, clock, start, &jwt, &org, &json!({
             "from":0,"size":5000,"query":{"bool":{"must":[
@@ -304,22 +334,27 @@ async fn fetch_class_map(
         })).await?;
         for t in &tdocs {
             if let Some(id) = s(t, "core.identity") {
-                terms.insert(id, json!({
+                terms.insert(id.clone(), json!({
                     "name": s(t, "core.name"),
                     "level": s(t, ATTR_SECURITY_CLASS).unwrap_or_default(),
                     "description": s(t, "core.description").unwrap_or_default(),
                 }));
+                let attrs = capture_term_attributes(t, &attr_specs);
+                if !attrs.is_empty() {
+                    term_attrs.insert(id, attrs);
+                }
             }
         }
     }
 
-    // 5. Build the field map: name + classification + governing term + meaning.
+    // 5. Build the field map: name + classification + governing term + meaning + attributes.
     let mut fields = Vec::new();
     for c in &cols {
         let (Some(id), Some(name)) = (s(c, "core.identity"), s(c, "core.name")) else { continue };
         let mut classification: Option<String> = None;
         let mut term_name: Option<String> = None;
         let mut meaning: Option<String> = None;
+        let mut attributes: Vec<TermAttribute> = Vec::new();
         if let Some(Value::String(tid)) = col_to_term.get(&id) {
             if let Some(term) = terms.get(tid) {
                 term_name = term.get("name").and_then(Value::as_str).map(str::to_string);
@@ -331,8 +366,11 @@ async fn fetch_class_map(
                     meaning = Some(d.to_string());
                 }
             }
+            if let Some(a) = term_attrs.get(tid) {
+                attributes = a.clone();
+            }
         }
-        fields.push(GovernedField { name, classification, term: term_name, meaning });
+        fields.push(GovernedField { name, classification, term: term_name, meaning, attributes });
     }
     Ok((fields, file_name, external_id))
 }

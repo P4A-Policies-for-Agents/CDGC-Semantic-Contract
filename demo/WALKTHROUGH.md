@@ -46,7 +46,15 @@ present all pass through unchanged.
    trust delimiter — and note that any forged fence in the payload is neutralised.
 4. That the RAW upstream result has **no** `_semanticContract` — the gateway added it, live.
 
-## Captured transcript (verified live 2026-09-22, omni-gw-small, policy 1.0.1)
+## Captured transcript (verified live 2026-09-22, omni-gw-small, policy 1.0.2)
+
+> **1.0.2 adds config-driven `termAttributes`:** extra CDGC Business Term fields
+> (Reference ID, Business Logic, Examples, Format Type/Description, Critical Data
+> Element — Alias Names via a config slot) are surfaced in the contract when
+> populated on the term, present-only. Live, the Customer 360 / Product Catalog
+> terms carry e.g. `Reference ID: BT-34`, `Format Type: Text`,
+> `Critical Data Element: true`; unpopulated attributes are omitted. Values keep
+> their catalog type (Examples an array, Critical Data Element a boolean).
 
 ```
 ╔════════════════════════════════════════════════════════════════════════

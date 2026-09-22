@@ -97,9 +97,10 @@ The live demo fronts **two tools on one MCP server**, each routed by `toolSchema
 CDGC schema, and shows the **before/after diff** on the same `tools/call`:
 
 - **`get_customer_profiles`** → **Customer 360 Profile** — `email_address` binds to **"Email
-  Address"** (Restricted); `marketing_consent` binds to **"Marketing Consent"** (Confidential).
+  Address"** (Restricted, via a "personal data" description marker); `customer_id` and
+  `marketing_consent` carry catalog meanings but no structured Security Level (attach unclassified).
 - **`get_product_catalog`** → **Product Catalog** — `unit_cost` / `list_price` bind to **"Unit
-  Cost"** / **"List Price"** (Confidential).
+  Cost"** / **"List Price"** (Confidential, via the structured IDMC Security Level).
 
 The raw upstream result carries only the payload; the same call through the gateway carries the
 payload **plus** the CDGC-resolved semantic contract — the meaning, Security Level and handling
@@ -116,8 +117,9 @@ $ python demo/agent.py          # initialize → notifications/initialized → t
 get_customer_profiles → Customer 360 Profile
   RAW (upstream mock)                     → (no semantic contract attached)
   GOVERNED (gateway + CDGC Semantic Contract):
-    • email_address    — "Email Address"    [restricted]   meaning + "Do not disclose externally…"
-    • marketing_consent— "Marketing Consent" [confidential] meaning + "Need-to-know internal use…"
+    • email_address    — "Email Address"       [restricted]   meaning + "Do not disclose externally…"
+    • customer_id      — "Customer Identifier"  [unclassified] meaning (durable merged identifier)
+    • marketing_consent— "Marketing Consent"    [unclassified] meaning (affirmative marketing permission)
 ```
 
 ---
@@ -135,6 +137,7 @@ get_customer_profiles → Customer 360 Profile
 | `pathSchemas` | | `[]` | REST analog: `<pathPrefix>=<schemaId>` entries; longest matching path prefix wins |
 | `schemaIdHeader` | | `x-dp-schema-id` | header the schema id may arrive on (used when no mapping matches) |
 | `schemaIdClaim` | | — | JWT claim to source the schema id from (opt-in) |
+| `termAttributes` | | *6 defaults* | extra Business Term fields surfaced when populated (present-only): `<catalogKey>=<label>` entries. Defaults: Reference ID, Business Logic, Examples, Format Type/Description, Critical Data Element. Values keep their catalog type (array/boolean/string). Append an entry for Alias Names (tenant-specific key); `[]` = none |
 | `restrictedObligation` | | *see table* | handling obligation attached to Restricted fields (free-text; `""` = none) |
 | `confidentialObligation` | | *see table* | handling obligation for Confidential fields |
 | `internalObligation` | | *see table* | handling obligation for Internal fields |

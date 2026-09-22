@@ -22,11 +22,23 @@ use std::time::SystemTime;
 
 use serde::{Deserialize, Serialize};
 
+/// One extra Business Term attribute surfaced from the catalog (Reference ID,
+/// Business Logic, Examples, Format Type/Description, Critical Data Element, …).
+/// `label` is the operator-facing name from `termAttributes`; `value` preserves
+/// the catalog type (string, boolean, number, or array of those) so the contract
+/// can carry `Examples` as an array and `Critical Data Element` as a boolean.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct TermAttribute {
+    pub label: String,
+    pub value: serde_json::Value,
+}
+
 /// One governed field resolved from the catalog: its column name, the IDMC
 /// Security Level of its linked Business Term (normalised lowercase, e.g.
 /// `restricted`; `None` when the field has no classified term), the term's
-/// name, and the term's *meaning* (its catalog description — the semantic
-/// content an `outputSchema` structurally cannot carry).
+/// name, the term's *meaning* (its catalog description — the semantic content an
+/// `outputSchema` structurally cannot carry), and any configured extra Business
+/// Term attributes present on the term.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct GovernedField {
     pub name: String,
@@ -36,6 +48,8 @@ pub struct GovernedField {
     pub term: Option<String>,
     #[serde(default)]
     pub meaning: Option<String>,
+    #[serde(default)]
+    pub attributes: Vec<TermAttribute>,
 }
 
 /// Cached, parsed per-field semantic map for one schema asset, plus its governed
@@ -192,6 +206,79 @@ pub fn resolve_path_schema(entries: &[String], path: &str) -> Option<String> {
     best.map(|(_, v)| v)
 }
 
+// ─── configurable extra Business Term attributes ────────────────────────────
+
+/// Parse the `termAttributes` config entries into `(catalogKey, label)` pairs.
+/// Each entry is `<catalogKey>=<label>` (e.g.
+/// `com.infa.ccgf.models.governance.Examples=Examples`). Blank keys/labels are
+/// dropped; the order is preserved (drives the order attributes are surfaced in).
+pub fn parse_term_attributes(entries: &[String]) -> Vec<(String, String)> {
+    let mut out = Vec::new();
+    for e in entries {
+        if let Some((k, v)) = e.split_once('=') {
+            let (k, v) = (k.trim(), v.trim());
+            if !k.is_empty() && !v.is_empty() {
+                out.push((k.to_string(), v.to_string()));
+            }
+        }
+    }
+    out
+}
+
+/// Normalise a raw catalog attribute value for the contract: trim strings and
+/// drop empties, keep booleans/numbers, clean array members recursively, and skip
+/// nested objects (structural, not display content). `None` = nothing to surface.
+fn normalize_attr_value(v: &serde_json::Value) -> Option<serde_json::Value> {
+    use serde_json::Value;
+    match v {
+        Value::String(s) => {
+            let t = s.trim();
+            if t.is_empty() {
+                None
+            } else {
+                Some(Value::String(t.to_string()))
+            }
+        }
+        Value::Bool(_) | Value::Number(_) => Some(v.clone()),
+        Value::Array(arr) => {
+            let cleaned: Vec<Value> = arr.iter().filter_map(normalize_attr_value).collect();
+            if cleaned.is_empty() {
+                None
+            } else {
+                Some(Value::Array(cleaned))
+            }
+        }
+        Value::Null | Value::Object(_) => None,
+    }
+}
+
+/// Capture the configured extra attributes present on a Business Term's catalog
+/// document (its `sourceAsMap`). Present-only: an attribute the term does not
+/// carry (or carries empty) is simply omitted.
+pub fn capture_term_attributes(term: &serde_json::Value, specs: &[(String, String)]) -> Vec<TermAttribute> {
+    let mut out = Vec::new();
+    for (key, label) in specs {
+        if let Some(v) = term.get(key) {
+            if let Some(value) = normalize_attr_value(v) {
+                out.push(TermAttribute { label: label.clone(), value });
+            }
+        }
+    }
+    out
+}
+
+/// Flatten an attribute value to a single line for the human-readable text block.
+fn attr_value_text(v: &serde_json::Value) -> String {
+    use serde_json::Value;
+    match v {
+        Value::String(s) => s.clone(),
+        Value::Bool(b) => b.to_string(),
+        Value::Number(n) => n.to_string(),
+        Value::Array(arr) => arr.iter().map(attr_value_text).collect::<Vec<_>>().join(", "),
+        _ => String::new(),
+    }
+}
+
 // ─── handling obligations ───────────────────────────────────────────────────
 
 /// The handling obligation attached for each classification tier — a short,
@@ -255,6 +342,10 @@ pub struct ContractField {
     pub classification: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub obligation: Option<String>,
+    /// Configured extra Business Term attributes present on the term (Reference
+    /// ID, Business Logic, Examples, …). Omitted from the JSON when empty.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub attributes: Vec<TermAttribute>,
 }
 
 /// The trust delimiter around the human/machine-readable block appended to a
@@ -352,8 +443,8 @@ pub fn build_contract(
             .map(str::trim)
             .filter(|s| !s.is_empty())
             .map(|m| clip(m, meaning_max));
-        // Nothing to say about this field — no meaning, no obligation.
-        if meaning.is_none() && obligation.is_none() {
+        // Nothing to say about this field — no meaning, no obligation, no extra attributes.
+        if meaning.is_none() && obligation.is_none() && f.attributes.is_empty() {
             continue;
         }
         entries.push(ContractField {
@@ -362,6 +453,7 @@ pub fn build_contract(
             meaning,
             classification,
             obligation,
+            attributes: f.attributes.clone(),
         });
     }
     // Most-restrictive first (deterministic tie-break on field name).
@@ -401,6 +493,12 @@ pub fn render_block(entries: &[ContractField], schema_label: &str) -> String {
         if let Some(ob) = &e.obligation {
             s.push_str(&format!("  Handling: {}", escape_delimiter(ob)));
         }
+        for a in &e.attributes {
+            let val = attr_value_text(&a.value);
+            if !val.is_empty() {
+                s.push_str(&format!("  {}: {}", escape_delimiter(&a.label), escape_delimiter(&val)));
+            }
+        }
         s.push('\n');
     }
     s.push_str(DELIM_CLOSE);
@@ -438,6 +536,7 @@ mod tests {
             classification: class.map(str::to_string),
             term: term.map(str::to_string),
             meaning: meaning.map(str::to_string),
+            attributes: Vec::new(),
         }
     }
 
@@ -580,6 +679,97 @@ mod tests {
         assert!(block.contains("[restricted]"));
         assert!(block.contains("Handling:"));
         assert!(block.contains("cust-360"));
+    }
+
+    #[test]
+    fn parse_term_attributes_key_label_pairs() {
+        let entries = vec![
+            "core.externalId=Reference ID".to_string(),
+            " com.infa.ccgf.models.governance.Examples = Examples ".to_string(),
+            "=BadNoKey".to_string(),
+            "com.infa.ccgf.models.governance.isCDE=".to_string(), // no label → dropped
+        ];
+        let specs = parse_term_attributes(&entries);
+        assert_eq!(specs, vec![
+            ("core.externalId".to_string(), "Reference ID".to_string()),
+            ("com.infa.ccgf.models.governance.Examples".to_string(), "Examples".to_string()),
+        ]);
+    }
+
+    #[test]
+    fn capture_term_attributes_present_only_and_typed() {
+        let term = json!({
+            "core.name": "Currency Code",
+            "core.externalId": "BT-48",
+            "com.infa.ccgf.models.governance.BusinessLogic": "  ISO 4217 alpha-3.  ",
+            "com.infa.ccgf.models.governance.Examples": ["USD", "  ", "EUR"],
+            "com.infa.ccgf.models.governance.isCDE": true,
+            "com.infa.ccgf.models.governance.FormatDescription": "   ", // empty → skipped
+            // FormatType absent entirely → skipped
+        });
+        let specs = parse_term_attributes(&vec![
+            "core.externalId=Reference ID".to_string(),
+            "com.infa.ccgf.models.governance.BusinessLogic=Business Logic".to_string(),
+            "com.infa.ccgf.models.governance.Examples=Examples".to_string(),
+            "com.infa.ccgf.models.governance.isCDE=Critical Data Element".to_string(),
+            "com.infa.ccgf.models.governance.FormatType=Format Type".to_string(),
+            "com.infa.ccgf.models.governance.FormatDescription=Format Description".to_string(),
+        ]);
+        let attrs = capture_term_attributes(&term, &specs);
+        assert_eq!(attrs.len(), 4); // Reference ID, Business Logic, Examples, Critical Data Element
+        assert_eq!(attrs[0].label, "Reference ID");
+        assert_eq!(attrs[0].value, json!("BT-48"));
+        assert_eq!(attrs[1].value, json!("ISO 4217 alpha-3.")); // trimmed
+        assert_eq!(attrs[2].value, json!(["USD", "EUR"])); // blank member dropped
+        assert_eq!(attrs[3].label, "Critical Data Element");
+        assert_eq!(attrs[3].value, json!(true)); // boolean preserved
+    }
+
+    #[test]
+    fn build_contract_attaches_field_with_only_attributes() {
+        // A term with no meaning and no classification but a Reference ID still has
+        // something to say → it is attached.
+        let mut f = gf("currency_code", None, Some("Currency Code"), None);
+        f.attributes = vec![TermAttribute { label: "Reference ID".into(), value: json!("BT-48") }];
+        let entries = build_contract(&[f], None, &obligations(), 24, 400);
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].attributes.len(), 1);
+        assert_eq!(entries[0].attributes[0].value, json!("BT-48"));
+    }
+
+    #[test]
+    fn contract_field_serializes_attributes_and_omits_when_empty() {
+        // With attributes → present in JSON.
+        let mut f = gf("currency_code", Some("public"), Some("Currency Code"), Some("ISO 4217."));
+        f.attributes = vec![
+            TermAttribute { label: "Examples".into(), value: json!(["USD", "EUR"]) },
+            TermAttribute { label: "Critical Data Element".into(), value: json!(true) },
+        ];
+        let entries = build_contract(&[f], None, &obligations(), 24, 400);
+        let v = serde_json::to_value(&entries[0]).unwrap();
+        assert_eq!(v["attributes"][0]["label"], "Examples");
+        assert_eq!(v["attributes"][0]["value"], json!(["USD", "EUR"]));
+        assert_eq!(v["attributes"][1]["value"], json!(true));
+        // Without attributes → key omitted entirely.
+        let plain = gf("x", Some("public"), Some("X"), Some("m"));
+        let e2 = build_contract(&[plain], None, &obligations(), 24, 400);
+        let v2 = serde_json::to_value(&e2[0]).unwrap();
+        assert!(v2.get("attributes").is_none());
+    }
+
+    #[test]
+    fn render_block_includes_attributes() {
+        let mut f = gf("currency_code", Some("public"), Some("Currency Code"), Some("ISO 4217 code."));
+        f.attributes = vec![
+            TermAttribute { label: "Reference ID".into(), value: json!("BT-48") },
+            TermAttribute { label: "Examples".into(), value: json!(["USD", "EUR"]) },
+            TermAttribute { label: "Critical Data Element".into(), value: json!(true) },
+        ];
+        let entries = build_contract(&[f], None, &obligations(), 24, 400);
+        let block = render_block(&entries, "cust-360");
+        assert!(block.contains("Reference ID: BT-48"));
+        assert!(block.contains("Examples: USD, EUR")); // array flattened
+        assert!(block.contains("Critical Data Element: true")); // boolean flattened
     }
 
     #[test]
