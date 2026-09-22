@@ -70,9 +70,10 @@ All four are configurable free-text strings (empty = say nothing for that tier).
 For each successful result, the semantic contract covers the governed fields **present in the
 payload** (when `annotateFieldsPresentOnly`, the default — so a payload with nothing governed is
 left byte-identical). Per field: the governing **term**, its **meaning** (catalog description,
-clipped to `maxMeaningChars`), its **classification**, and the **obligation**. Entries are
-ordered most-restrictive first and capped at `maxContractEntries`. It lands in **two** places
-clients disagree on:
+clipped to `maxMeaningChars`), its **classification**, the **obligation**, and any configured
+**extra Business Term attributes** ([`termAttributes`](#extra-business-term-attributes-termattributes)).
+Entries are ordered most-restrictive first and capped at `maxContractEntries`. It lands in **two**
+places clients disagree on:
 
 - `result.structuredContent._semanticContract` — a structured object (only when the upstream
   returned a `structuredContent`; never fabricated).
@@ -81,6 +82,68 @@ clients disagree on:
   payload is neutralised so a payload cannot impersonate gateway-authored guidance.
 
 A REST JSON object gets a top-level `_semanticContract`.
+
+### Extra Business Term attributes (`termAttributes`)
+
+Beyond meaning + classification + obligation, the contract surfaces additional **Business Term
+fields** that data governance authored in CDGC, so the agent sees the catalog's own reference
+identity, worked examples, format rules and criticality flag — not just a definition. These are
+read from the term's `sourceAsMap` during the same cached CDGC fetch that resolves meaning and
+Security Level (no extra calls), and attached under each field's `attributes`.
+
+**Present-only.** An attribute is surfaced only when the term actually carries it: an absent field,
+an empty string, or an array with no non-empty members is omitted (nested objects are skipped as
+structural). A field that has *only* attributes (no meaning/classification/obligation) is still
+attached — there is something true to say about it.
+
+**Type-preserving.** Values keep their catalog JSON type in `structuredContent` — `Examples` stays
+an array, `Critical Data Element` a boolean, the rest strings. The `content[]` text block flattens
+them for readability (`array → "a, b"`, `boolean → "true"`).
+
+Each entry is `<catalogKey>=<label>` — `catalogKey` is the CDGC attribute key on the Business
+Term; `label` is what the agent sees. Defaults (tuned to this tenant's IDMC model):
+
+| Label | CDGC attribute key | Type |
+|---|---|---|
+| Reference ID | `core.externalId` | string (e.g. `BT-34`) |
+| Business Logic | `com.infa.ccgf.models.governance.BusinessLogic` | string |
+| Examples | `com.infa.ccgf.models.governance.Examples` | array of strings |
+| Format Type | `com.infa.ccgf.models.governance.FormatType` | string (e.g. `Text`) |
+| Format Description | `com.infa.ccgf.models.governance.FormatDescription` | string |
+| Critical Data Element | `com.infa.ccgf.models.governance.isCDE` | boolean |
+
+**Adding Alias Names / synonyms** (or any other term attribute): append an entry with that field's
+catalog key — the key varies by tenant, so read it off a term that has the field populated (query
+`ccgf-searchv2` for the term by `core.identity` and inspect its `sourceAsMap` keys, which follow
+`com.infa.ccgf.models.governance.<Name>`), e.g. `com.infa.ccgf.models.governance.Synonym=Alias Names`.
+Set `termAttributes: []` to surface no extra attributes (meaning + classification + obligation only).
+
+Example (`structuredContent._semanticContract.fields[]` entry, MCP):
+
+```json
+{
+  "field": "email_address",
+  "term": "Email Address",
+  "classification": "restricted",
+  "meaning": "The deliverable electronic mail address a customer has given for contact…",
+  "obligation": "Restricted / PII. Do not disclose externally; use only for the stated purpose; minimise retention.",
+  "attributes": [
+    { "label": "Reference ID", "value": "BT-34" },
+    { "label": "Format Type", "value": "Text" },
+    { "label": "Critical Data Element", "value": true }
+  ]
+}
+```
+
+The same field in the `content[]` text block (attributes appended after `Handling:`):
+
+```
+• email_address — "Email Address" [restricted]: The deliverable electronic mail address… 
+  Handling: Restricted / PII. Do not disclose externally…  Reference ID: BT-34  Format Type: Text  Critical Data Element: true
+```
+
+Attributes count toward `maxContractEntries` only at the field level (they do not create extra
+entries); a field with many attributes is still one contract entry.
 
 ## Fail-open
 
