@@ -1,0 +1,109 @@
+{
+ "type": "rest_api",
+ "version": "1.0",
+ "api": {
+  "name": "Customer Account API",
+  "description": "Mock Customer Account API for the CDGC Semantic Contract 'Account Review' demo. Customer accounts with status flags, loyalty and credit data. Field names are deliberately terse; their business meaning is governed in CDGC. All data is fictitious test data.",
+  "base_path": "/customer-account-api/v1",
+  "auth_enabled": false,
+  "endpoints": [
+   {
+    "method": "GET",
+    "path": "/accounts/{accountId}",
+    "summary": "Get a customer account",
+    "description": "Returns one customer account: status flag, last invoice date, loyalty and credit data.",
+    "mock_scenarios": [
+     {
+      "name": "Velo Club Lausanne (ACC-2041)",
+      "priority": 10,
+      "conditions": [
+       {
+        "field": "accountId",
+        "value": "ACC-2041",
+        "source": "path_param",
+        "operator": "==="
+       }
+      ],
+      "response": {
+       "statusCode": 200,
+       "headers": {
+        "Content-Type": "application/json"
+       },
+       "body": "{\"account_id\": \"ACC-2041\", \"account_name\": \"Velo Club Lausanne\", \"segment\": \"club\", \"is_active\": true, \"last_invoice_date\": \"2026-07-21\", \"loyalty_score\": 1, \"credit_limit\": 50000, \"account_manager\": \"Lea Moret\", \"as_of_date\": \"2026-10-30\"}"
+      }
+     },
+     {
+      "name": "Genève Cycling Academy (ACC-2042)",
+      "priority": 10,
+      "conditions": [
+       {
+        "field": "accountId",
+        "value": "ACC-2042",
+        "source": "path_param",
+        "operator": "==="
+       }
+      ],
+      "response": {
+       "statusCode": 200,
+       "headers": {
+        "Content-Type": "application/json"
+       },
+       "body": "{\"account_id\": \"ACC-2042\", \"account_name\": \"Gen\\u00e8ve Cycling Academy\", \"segment\": \"club\", \"is_active\": true, \"last_invoice_date\": \"2026-10-14\", \"loyalty_score\": 3, \"credit_limit\": 20000, \"account_manager\": \"Lea Moret\", \"as_of_date\": \"2026-10-30\"}"
+      }
+     },
+     {
+      "name": "Rhône Valley Riders (ACC-2043)",
+      "priority": 10,
+      "conditions": [
+       {
+        "field": "accountId",
+        "value": "ACC-2043",
+        "source": "path_param",
+        "operator": "==="
+       }
+      ],
+      "response": {
+       "statusCode": 200,
+       "headers": {
+        "Content-Type": "application/json"
+       },
+       "body": "{\"account_id\": \"ACC-2043\", \"account_name\": \"Rh\\u00f4ne Valley Riders\", \"segment\": \"club\", \"is_active\": false, \"last_invoice_date\": \"2025-11-02\", \"loyalty_score\": 4, \"credit_limit\": 5000, \"account_manager\": \"Marc Favre\", \"as_of_date\": \"2026-10-30\"}"
+      }
+     },
+     {
+      "name": "Account not found",
+      "priority": 100,
+      "conditions": [],
+      "response": {
+       "statusCode": 404,
+       "headers": {
+        "Content-Type": "application/json"
+       },
+       "body": "{\"error\": \"not_found\", \"message\": \"No account with this id\"}"
+      }
+     }
+    ]
+   },
+   {
+    "method": "GET",
+    "path": "/accounts",
+    "summary": "List customer accounts",
+    "description": "Lists customer accounts, optionally by segment (club | retail | corporate).",
+    "mock_scenarios": [
+     {
+      "name": "All accounts",
+      "priority": 100,
+      "conditions": [],
+      "response": {
+       "statusCode": 200,
+       "headers": {
+        "Content-Type": "application/json"
+       },
+       "body": "{\"accounts\": [{\"account_id\": \"ACC-2041\", \"account_name\": \"Velo Club Lausanne\", \"segment\": \"club\", \"is_active\": true, \"last_invoice_date\": \"2026-07-21\", \"loyalty_score\": 1, \"credit_limit\": 50000, \"account_manager\": \"Lea Moret\", \"as_of_date\": \"2026-10-30\"}, {\"account_id\": \"ACC-2042\", \"account_name\": \"Gen\\u00e8ve Cycling Academy\", \"segment\": \"club\", \"is_active\": true, \"last_invoice_date\": \"2026-10-14\", \"loyalty_score\": 3, \"credit_limit\": 20000, \"account_manager\": \"Lea Moret\", \"as_of_date\": \"2026-10-30\"}, {\"account_id\": \"ACC-2043\", \"account_name\": \"Rh\\u00f4ne Valley Riders\", \"segment\": \"club\", \"is_active\": false, \"last_invoice_date\": \"2025-11-02\", \"loyalty_score\": 4, \"credit_limit\": 5000, \"account_manager\": \"Marc Favre\", \"as_of_date\": \"2026-10-30\"}], \"count\": 3}"
+      }
+     }
+    ]
+   }
+  ]
+ }
+}

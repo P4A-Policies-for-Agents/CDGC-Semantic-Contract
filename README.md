@@ -50,6 +50,24 @@ schema) it authenticates to IDMC (**Login → JWT**) and walks the catalog via *
    captured present-only, no extra CDGC calls),
 5. build the field → term → meaning/classification/**attributes** map: one entry per column.
 
+### MCP servers catalogued from A2D (1.1.0)
+
+An MCP server published to CDGC from A2D has no schema: its tools are **`a2d.agentic.McpTool`**
+assets and their response fields are **`a2d.agentic.McpToolOutputField`** children named by path
+(`is_active`, `orders[].order_total`). The policy binds to them in two ways, both optional:
+
+- **`mcpServerAssetId`** — the CDGC id of the MCP Server asset. The called tool is looked up by its
+  **exact name** among the server's tools (an MCP Bridge names tools `<exchange-asset-id>_<operationId>`,
+  so catalogue them under that name). One setting covers every tool; no per-tool map.
+- **`toolSchemas` / `schemaId` with an MCP Tool asset id** — the id may point at an MCP Tool asset
+  instead of a schema; the policy then reads the tool's output fields instead of columns.
+
+Output fields match the payload on their **leaf key** (`orders[].order_total` → `order_total`), so a
+field nested in an array is annotated like a top-level one. Schema columns keep exact matching.
+`fieldClassTypes` sets which classes count as output fields. A tool the server does not have in
+the catalog passes through unannotated (info log). Routing order: `toolSchemas` / `pathSchemas`,
+then `mcpServerAssetId`, then claim, header, and the default `schemaId`.
+
 **Classification resolution** per field: the term's structured Security Level
 (`Public`/`Internal`/`Confidential`/`Restricted`) wins when present; otherwise it is inferred
 from the term's **description** via keyword markers (`restrictedMarkers`/… , most-restrictive
@@ -172,6 +190,10 @@ payload **plus** the CDGC-resolved semantic contract — the meaning, Security L
 obligation for each governed field, resolved live and attached at the gateway with no change to
 the tool, the route, or the agent.
 
+A second demo, **Account Review** ([`demo/account-review/`](demo/account-review/README.md)), uses an
+A2D-published MCP server behind an MCP Bridge and `mcpServerAssetId`: the agent misreads four
+fields without the policy and answers correctly with it.
+
 Full runbook and driver: [`demo/PROVISION.md`](demo/PROVISION.md), [`demo/agent.py`](demo/agent.py).
 The `<gatewayPublicHost>` and schema ids live only in the git-ignored `demo/config.json` /
 `demo/env.local.sh`.
@@ -198,7 +220,9 @@ get_customer_profiles → Customer 360 Profile
 | `cdgcOrgUsername` | ✓ | — | IDMC org user (`security:sensitive`) |
 | `cdgcOrgPassword` | ✓ | — | IDMC org password (`security:sensitive`) |
 | `schemaId` | | — | optional default governed CDGC schema asset id — fallback for any tool/path with no mapping. A call resolving to no schema passes through unannotated |
-| `toolSchemas` | | `[]` | per-tool schema routing: `<toolName>=<schemaId>` entries; the invoked MCP tool selects its bound schema |
+| `toolSchemas` | | `[]` | per-tool schema routing: `<toolName>=<schemaId>` entries; the invoked MCP tool selects its bound schema. The id may also be an MCP Tool asset (1.1.0) |
+| `mcpServerAssetId` | | — | CDGC id of an A2D-published MCP Server asset (1.1.0): the called tool is found by exact name under it and its output fields are annotated. Used when no `toolSchemas` entry matches |
+| `fieldClassTypes` | | `["a2d.agentic.McpToolOutputField"]` | CDGC classes read as an MCP tool's output fields (1.1.0); matched on the leaf key of the path |
 | `pathSchemas` | | `[]` | REST analog: `<pathPrefix>=<schemaId>` entries; longest matching path prefix wins |
 | `schemaIdHeader` | | `x-dp-schema-id` | header the schema id may arrive on (used when no mapping matches) |
 | `schemaIdClaim` | | — | JWT claim to source the schema id from (opt-in) |

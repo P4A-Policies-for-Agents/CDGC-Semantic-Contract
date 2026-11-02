@@ -1,0 +1,51 @@
+{
+ "type": "rest_api",
+ "version": "1.0",
+ "api": {
+  "name": "Stock Position API",
+  "description": "Mock Stock Position API for the CDGC Semantic Contract 'Account Review' demo. Stock quantities per SKU in the warehouse ledger's own terms. All data is fictitious test data.",
+  "base_path": "/stock-position-api/v1",
+  "auth_enabled": false,
+  "endpoints": [
+   {
+    "method": "GET",
+    "path": "/stock/{sku}",
+    "summary": "Get the stock position of a SKU",
+    "description": "Returns the warehouse quantities of one SKU.",
+    "mock_scenarios": [
+     {
+      "name": "Trail Helmet 26 (HELM-TRAIL-26)",
+      "priority": 10,
+      "conditions": [
+       {
+        "field": "sku",
+        "value": "HELM-TRAIL-26",
+        "source": "path_param",
+        "operator": "==="
+       }
+      ],
+      "response": {
+       "statusCode": 200,
+       "headers": {
+        "Content-Type": "application/json"
+       },
+       "body": "{\"sku\": \"HELM-TRAIL-26\", \"product_name\": \"Trail Helmet 26\", \"warehouse_id\": \"WH-LAU-01\", \"qty_available\": 45, \"qty_committed\": 20, \"qty_blocked\": 10, \"unit_price\": 180.0, \"as_of_date\": \"2026-10-30\"}"
+      }
+     },
+     {
+      "name": "SKU not found",
+      "priority": 100,
+      "conditions": [],
+      "response": {
+       "statusCode": 404,
+       "headers": {
+        "Content-Type": "application/json"
+       },
+       "body": "{\"error\": \"not_found\", \"message\": \"No stock position for this SKU\"}"
+      }
+     }
+    ]
+   }
+  ]
+ }
+}

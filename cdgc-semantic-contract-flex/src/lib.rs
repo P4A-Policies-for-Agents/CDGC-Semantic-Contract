@@ -69,6 +69,10 @@ const CDGC_REFRESH_BUDGET_MS: i64 = 15_000;
 const DEFAULT_REFRESH_INTERVAL_SECONDS: i64 = 86_400;
 const SEARCH_PATH: &str = "/ccgf-searchv2/api/v1/search";
 const CT_FLATFIELD: &str = "com.infa.odin.models.file.flat.FlatField";
+// A2D-published MCP servers: tools under the server, output fields under each tool
+// (the same classes the MCP CDAM Data Access Enforcement policy reads).
+const TOOL_CLASS_TYPES: &[&str] = &["a2d.agentic.McpTool", "protocol.mcp.McpTool"];
+const DEFAULT_FIELD_CLASS_TYPES: &[&str] = &["a2d.agentic.McpToolOutputField"];
 const REL_TECH_GLOSSARY: &str = "com.infa.ccgf.models.governance.IClassTechnicalGlossaryBase";
 // The structured IDMC "Security Level" classification on a Business Term.
 const ATTR_SECURITY_CLASS: &str = "com.infa.ccgf.models.governance.securityClassification";
@@ -122,14 +126,40 @@ struct CdgcJwtResponse {
     jwt_token: String,
 }
 
+/// What a call binds to in CDGC: a schema asset (a scanned file/table, or an MCP
+/// Tool asset id via toolSchemas), or a tool of the configured MCP Server asset,
+/// looked up by name.
+#[derive(Clone, Debug, PartialEq)]
+enum Target {
+    Schema(String),
+    ServerTool { server: String, tool: String },
+}
+
+impl Target {
+    /// Cache key suffix; the two kinds never collide.
+    fn key(&self) -> String {
+        match self {
+            Target::Schema(id) => id.clone(),
+            Target::ServerTool { server, tool } => format!("mcp:{server}/{tool}"),
+        }
+    }
+    /// The `schemaId` shown in the contract and the logs.
+    fn label(&self) -> String {
+        match self {
+            Target::Schema(id) => id.clone(),
+            Target::ServerTool { server, tool } => format!("{server}/{tool}"),
+        }
+    }
+}
+
 /// Threaded from the request leg to the response leg: whether this response is a
 /// candidate for annotation, whether it is JSON-RPC (MCP/A2A) vs REST, and the
-/// CDGC schema resolved for the call.
+/// CDGC target resolved for the call.
 #[derive(Clone, Debug, Default)]
 struct Ctx {
     annotate: bool,
     is_rpc: bool,
-    schema_id: Option<String>,
+    target: Option<Target>,
     tool: Option<String>,
 }
 
@@ -204,6 +234,29 @@ fn mapped_schema(config: &Config, tool: Option<&str>, path: Option<&str>) -> Opt
     None
 }
 
+/// MCP Server mode: a `tools/call` binds to the called tool of `mcpServerAssetId`.
+fn server_tool_target(config: &Config, tool: Option<&str>) -> Option<Target> {
+    let server = config.mcp_server_asset_id.as_deref().map(str::trim).filter(|s| !s.is_empty())?;
+    let tool = tool.map(str::trim).filter(|t| !t.is_empty())?;
+    Some(Target::ServerTool { server: server.to_string(), tool: tool.to_string() })
+}
+
+/// The output-field classes read under an MCP tool (`fieldClassTypes`, else the A2D default).
+fn field_class_types(config: &Config) -> Vec<String> {
+    let v: Vec<String> = config.field_class_types.as_deref().unwrap_or_default().iter()
+        .map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect();
+    if v.is_empty() { DEFAULT_FIELD_CLASS_TYPES.iter().map(|s| s.to_string()).collect() } else { v }
+}
+
+/// Whether a catalog object is an MCP Tool (`core.classType` is a string or a list).
+fn is_tool_asset(doc: &Value) -> bool {
+    match doc.get("core.classType") {
+        Some(Value::String(c)) => TOOL_CLASS_TYPES.contains(&c.as_str()),
+        Some(Value::Array(a)) => a.iter().filter_map(Value::as_str).any(|c| TOOL_CLASS_TYPES.contains(&c)),
+        _ => false,
+    }
+}
+
 // ─── CDGC resolution core (shared shape with the sibling CDGC Purpose Binding) ──
 
 /// Authenticate to IDMC (Login → JWT). Returns (jwt, orgId).
@@ -271,7 +324,36 @@ fn s(map: &Value, key: &str) -> Option<String> {
 /// term meaning/description). Identical resolution chain to CDGC Purpose Binding,
 /// but it also keeps the term *description* (the semantic content this policy
 /// attaches), which the sibling only uses as a marker-classification fallback.
+///
+/// A schema id that is an MCP Tool asset (A2D) reads the tool's output fields
+/// (`fieldClassTypes`) instead of flat-file columns; their names are paths such
+/// as `orders[].order_total` and match the payload key at the end of the path.
 async fn fetch_class_map(
+    client: &HttpClient,
+    config: &Config,
+    clock: &Clock,
+    markers: &MarkerRules,
+    target: &Target,
+) -> Result<(Vec<GovernedField>, Option<String>, Option<String>)> {
+    match target {
+        Target::Schema(id) => fetch_schema_map(client, config, clock, markers, id).await,
+        Target::ServerTool { server, tool } => fetch_server_tool_map(client, config, clock, markers, server, tool).await,
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn search_children(
+    client: &HttpClient, config: &Config, clock: &Clock, start: SystemTime,
+    jwt: &str, org: &str, classes: Vec<String>, parents: Vec<String>, size: u32,
+) -> Result<Vec<Value>> {
+    cdgc_search(client, config, clock, start, jwt, org, &json!({
+        "from":0,"size":size,"query":{"bool":{
+            "must":[{"terms":{"core.classType":classes}}],
+            "filter":[{"terms":{"core.location::path_hierarchy.parent":parents}}]}}
+    })).await
+}
+
+async fn fetch_schema_map(
     client: &HttpClient,
     config: &Config,
     clock: &Clock,
@@ -279,7 +361,6 @@ async fn fetch_class_map(
     schema_id: &str,
 ) -> Result<(Vec<GovernedField>, Option<String>, Option<String>)> {
     let start = clock.now();
-    let attr_specs = term_attribute_specs(config);
     let (jwt, org) = cdgc_auth(client, config, clock, start).await?;
 
     // 1. Resolve the schema asset → location + identity.
@@ -293,19 +374,76 @@ async fn fetch_class_map(
     let file_name = s(&file, "core.name");
     let external_id = s(&file, "core.externalId");
 
-    // 2. Enumerate columns (children of the schema location).
-    let cols = cdgc_search(client, config, clock, start, &jwt, &org, &json!({
-        "from":0,"size":1000,"query":{"bool":{
-            "must":[{"terms":{"core.classType":[CT_FLATFIELD]}}],
-            "filter":[{"terms":{"core.location::path_hierarchy.parent":[location]}}]}}
-    })).await?;
+    // 2. Enumerate columns (children of the schema location), or an MCP tool's output fields.
+    let is_tool = is_tool_asset(&file);
+    let classes = if is_tool { field_class_types(config) } else { vec![CT_FLATFIELD.to_string()] };
+    let cols = search_children(client, config, clock, start, &jwt, &org, classes, vec![location], 1000).await?;
     if cols.is_empty() {
         return Err(anyhow!("no columns found for schema asset '{schema_id}'"));
+    }
+    let fields = governed_fields(client, config, clock, start, markers, &jwt, &org, &cols, is_tool).await?;
+    Ok((fields, file_name, external_id))
+}
+
+/// MCP Server mode: the server asset → its tool with the called name → that tool's
+/// output fields. A tool that is not in the catalog yields an empty map (cached like
+/// any other, so an uncatalogued tool does not cost a CDGC round trip per call).
+async fn fetch_server_tool_map(
+    client: &HttpClient,
+    config: &Config,
+    clock: &Clock,
+    markers: &MarkerRules,
+    server_id: &str,
+    tool: &str,
+) -> Result<(Vec<GovernedField>, Option<String>, Option<String>)> {
+    let start = clock.now();
+    let (jwt, org) = cdgc_auth(client, config, clock, start).await?;
+
+    let servers = cdgc_search(client, config, clock, start, &jwt, &org, &json!({
+        "from":0,"size":1,"query":{"bool":{"must":[
+            {"terms":{"elementType":["OBJECT"]}},
+            {"terms":{"core.identity":[server_id]}}]}}
+    })).await?;
+    let server = servers.into_iter().next().ok_or_else(|| anyhow!("MCP server asset '{server_id}' not found"))?;
+    let location = s(&server, "core.location").ok_or_else(|| anyhow!("MCP server asset has no core.location"))?;
+
+    let classes = TOOL_CLASS_TYPES.iter().map(|c| c.to_string()).collect();
+    let tools = search_children(client, config, clock, start, &jwt, &org, classes, vec![location], 1000).await?;
+    let Some(tool_doc) = tools.iter().find(|t| s(t, "core.name").is_some_and(|n| n.trim() == tool)) else {
+        logger::info!("csc: tool '{tool}' is not an MCP Tool of '{server_id}' in CDGC; not annotated");
+        return Ok((Vec::new(), Some(tool.to_string()), None));
+    };
+    let tool_location = s(tool_doc, "core.location").ok_or_else(|| anyhow!("MCP tool '{tool}' has no core.location"))?;
+    let tool_name = s(tool_doc, "core.name");
+    let external_id = s(tool_doc, "core.externalId");
+
+    let cols = search_children(client, config, clock, start, &jwt, &org, field_class_types(config), vec![tool_location], 1000).await?;
+    let fields = governed_fields(client, config, clock, start, markers, &jwt, &org, &cols, true).await?;
+    Ok((fields, tool_name, external_id))
+}
+
+/// Steps 3–5, shared by both kinds of target: the fields' Business Term links, the
+/// linked terms, and the per-field map.
+#[allow(clippy::too_many_arguments)]
+async fn governed_fields(
+    client: &HttpClient,
+    config: &Config,
+    clock: &Clock,
+    start: SystemTime,
+    markers: &MarkerRules,
+    jwt: &str,
+    org: &str,
+    cols: &[Value],
+    match_leaf: bool,
+) -> Result<Vec<GovernedField>> {
+    let attr_specs = term_attribute_specs(config);
+    if cols.is_empty() {
+        return Ok(Vec::new());
     }
     let col_ids: Vec<String> = cols.iter().filter_map(|c| s(c, "core.identity")).collect();
 
     // 3. Column → Business Term links.
-    let rels = cdgc_search(client, config, clock, start, &jwt, &org, &json!({
+    let rels = cdgc_search(client, config, clock, start, jwt, org, &json!({
         "from":0,"size":5000,"query":{"bool":{"must":[
             {"terms":{"elementType":["RELATIONSHIP"]}},
             {"terms":{"type":[REL_TECH_GLOSSARY]}},
@@ -327,7 +465,7 @@ async fn fetch_class_map(
     let mut terms: Map<String, Value> = Map::new(); // termId → {name, level, description}
     let mut term_attrs: std::collections::HashMap<String, Vec<TermAttribute>> = std::collections::HashMap::new();
     if !term_ids.is_empty() {
-        let tdocs = cdgc_search(client, config, clock, start, &jwt, &org, &json!({
+        let tdocs = cdgc_search(client, config, clock, start, jwt, org, &json!({
             "from":0,"size":5000,"query":{"bool":{"must":[
                 {"terms":{"elementType":["OBJECT"]}},
                 {"terms":{"core.identity":term_ids}}]}}
@@ -349,7 +487,7 @@ async fn fetch_class_map(
 
     // 5. Build the field map: name + classification + governing term + meaning + attributes.
     let mut fields = Vec::new();
-    for c in &cols {
+    for c in cols {
         let (Some(id), Some(name)) = (s(c, "core.identity"), s(c, "core.name")) else { continue };
         let mut classification: Option<String> = None;
         let mut term_name: Option<String> = None;
@@ -370,9 +508,9 @@ async fn fetch_class_map(
                 attributes = a.clone();
             }
         }
-        fields.push(GovernedField { name, classification, term: term_name, meaning, attributes });
+        fields.push(GovernedField { name, classification, term: term_name, meaning, attributes, match_leaf });
     }
-    Ok((fields, file_name, external_id))
+    Ok(fields)
 }
 
 // ─── DataStorage cache (lazy refresh, single-flight, CAS) ───────────────────
@@ -434,9 +572,10 @@ async fn try_acquire_refresh_lock<S: DataStorage>(store: &S, key: &str, now: i64
 /// passes the response through unchanged (fail-open).
 async fn get_class_map<S: DataStorage>(
     client: &HttpClient, config: &Config, clock: &Clock, markers: &MarkerRules,
-    map_store: &S, lock_store: &S, schema_id: &str,
+    map_store: &S, lock_store: &S, target: &Target,
 ) -> Option<CachedClassMap> {
-    let key = format!("{CLASS_CACHE_KEY_PREFIX}{schema_id}");
+    let target_key = target.key();
+    let key = format!("{CLASS_CACHE_KEY_PREFIX}{target_key}");
     let ttl = config.refresh_interval_seconds.unwrap_or(DEFAULT_REFRESH_INTERVAL_SECONDS).max(0);
     let now = now_secs(clock);
     let cached = read_cached(map_store, &key).await;
@@ -445,18 +584,18 @@ async fn get_class_map<S: DataStorage>(
             return cached;
         }
     }
-    let lock_key = format!("{REFRESH_LOCK_KEY_PREFIX}{schema_id}");
+    let lock_key = format!("{REFRESH_LOCK_KEY_PREFIX}{target_key}");
     if !try_acquire_refresh_lock(lock_store, &lock_key, now).await.unwrap_or(true) {
         return cached; // someone else is refreshing; serve stale if any.
     }
-    match fetch_class_map(client, config, clock, markers, schema_id).await {
+    match fetch_class_map(client, config, clock, markers, target).await {
         Ok((fields, name, external_id)) => {
             let entry = CachedClassMap { fields, name, external_id, timestamp: now };
             write_cached(map_store, &key, &entry).await;
             Some(entry)
         }
         Err(e) => {
-            logger::warn!("csc: class-map refresh failed for '{schema_id}': {e}");
+            logger::warn!("csc: class-map refresh failed for '{}': {e}", target.label());
             cached
         }
     }
@@ -600,18 +739,23 @@ async fn request_filter(request_state: RequestState, config: Rc<Config>) -> Flow
         }
     }
 
-    // Route by tool (MCP) or path (REST): mapping wins, else JWT claim, else header, else default.
+    // Route by tool (MCP) or path (REST): mapping wins, else the called tool of the
+    // MCP Server asset, else JWT claim, else header, else default.
     let req_path = if is_rpc { None } else { path.filter(|v| !v.trim().is_empty()) };
-    let schema_id = mapped_schema(&config, tool.as_deref(), req_path.as_deref())
-        .or_else(|| from_claim(&config.schema_id_claim))
-        .or_else(|| schema_hdr_val.filter(|v| !v.trim().is_empty()))
-        .or_else(|| config.schema_id.clone());
+    let target = mapped_schema(&config, tool.as_deref(), req_path.as_deref()).map(Target::Schema)
+        .or_else(|| server_tool_target(&config, tool.as_deref()))
+        .or_else(|| {
+            from_claim(&config.schema_id_claim)
+                .or_else(|| schema_hdr_val.filter(|v| !v.trim().is_empty()))
+                .or_else(|| config.schema_id.clone())
+                .map(Target::Schema)
+        });
 
     // Annotate only a resolvable call we can bind: an MCP tools/call, or any REST
     // request (its response is guarded on the response leg by status + content-type).
-    let annotate = schema_id.is_some() && (if is_rpc { tool.is_some() } else { true });
+    let annotate = target.is_some() && (if is_rpc { tool.is_some() } else { true });
 
-    Flow::Continue(Ctx { annotate, is_rpc, schema_id, tool })
+    Flow::Continue(Ctx { annotate, is_rpc, target, tool })
 }
 
 // ─── response leg: annotate a successful result, else pass through ──────────
@@ -626,7 +770,8 @@ async fn response_filter<S: DataStorage>(
     lock_store: Rc<S>,
 ) {
     let RequestData::Continue(ctx) = request_data else { return };
-    let (Some(schema_id), true) = (ctx.schema_id.clone(), ctx.annotate) else { return };
+    let (Some(target), true) = (ctx.target.clone(), ctx.annotate) else { return };
+    let schema_id = target.label();
 
     let headers = response_state.into_headers_state().await;
     let status = headers.status_code();
@@ -691,7 +836,7 @@ async fn response_filter<S: DataStorage>(
 
     // Resolve the schema's semantic map (cached) and build the guidance. Any CDGC
     // failure yields None → pass through unchanged (fail-open).
-    let cc = match get_class_map(&client, &config, &clock, &markers, &*map_store, &*lock_store, &schema_id).await {
+    let cc = match get_class_map(&client, &config, &clock, &markers, &*map_store, &*lock_store, &target).await {
         Some(cc) => cc,
         None => { let _ = body_state.handler().set_body(&orig); return; }
     };
@@ -779,5 +924,27 @@ async fn configure(
         let ms = Rc::new(storage_builder.local(CLASS_CACHE_NAMESPACE));
         let ls = Rc::new(storage_builder.local(REFRESH_LOCK_NAMESPACE));
         launch_policy(launcher, config, client, clock, ms, ls).await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tool_asset_detection() {
+        assert!(is_tool_asset(&json!({"core.classType": "a2d.agentic.McpTool"})));
+        assert!(is_tool_asset(&json!({"core.classType": ["protocol.mcp.McpTool"]})));
+        assert!(!is_tool_asset(&json!({"core.classType": "com.infa.odin.models.file.flat.FlatFile"})));
+        assert!(!is_tool_asset(&json!({})));
+    }
+
+    #[test]
+    fn target_keys_do_not_collide() {
+        let schema = Target::Schema("abc".into());
+        let tool = Target::ServerTool { server: "srv".into(), tool: "abc".into() };
+        assert_eq!(schema.key(), "abc"); // 1.0.x cache key unchanged
+        assert_eq!(tool.key(), "mcp:srv/abc");
+        assert_eq!(tool.label(), "srv/abc");
     }
 }

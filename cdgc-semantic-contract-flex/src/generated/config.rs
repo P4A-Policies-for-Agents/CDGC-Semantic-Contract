@@ -23,6 +23,8 @@ pub struct Config {
     pub confidential_obligation: Option<String>,
     #[serde(alias = "distributed")]
     pub distributed: Option<bool>,
+    #[serde(alias = "fieldClassTypes")]
+    pub field_class_types: Option<Vec<String>>,
     #[serde(alias = "internalMarkers")]
     pub internal_markers: Option<Vec<String>>,
     #[serde(alias = "internalObligation")]
@@ -33,6 +35,8 @@ pub struct Config {
     pub max_contract_entries: Option<i64>,
     #[serde(alias = "maxMeaningChars")]
     pub max_meaning_chars: Option<i64>,
+    #[serde(alias = "mcpServerAssetId")]
+    pub mcp_server_asset_id: Option<String>,
     #[serde(alias = "pathSchemas")]
     pub path_schemas: Option<Vec<String>>,
     #[serde(alias = "publicMarkers")]

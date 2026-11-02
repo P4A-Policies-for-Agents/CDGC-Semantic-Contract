@@ -58,7 +58,28 @@ spec:
         (e.g. get_customer_profiles=b75b6eb4-...). On a tools/call the invoked tool
         name selects its bound schema; a tool with no entry falls back to schemaId.
         Tool names are case-sensitive. Admin-owned coarse routing — the catalog
-        stays authoritative for the meanings and classifications.
+        stays authoritative for the meanings and classifications. The schemaId
+        may also be the id of an MCP Tool asset (e.g. one published from A2D):
+        the policy then reads that tool's output fields (fieldClassTypes).
+    mcpServerAssetId:
+      type: string
+      description: >-
+        Optional. CDGC asset id of an MCP Server (e.g. published from A2D). On a
+        tools/call with no toolSchemas entry, the policy finds the MCP Tool of
+        this server with the called tool's exact name and annotates from that
+        tool's output fields and their linked Business Terms — no per-tool
+        config. Output field names are paths (orders[].order_total) and match
+        the payload key at the end of the path (order_total). A tool that is not
+        in the catalog is not annotated. Unset (default) = 1.0.x behaviour.
+    fieldClassTypes:
+      type: array
+      items:
+        type: string
+      default: ["a2d.agentic.McpToolOutputField"]
+      description: >-
+        CDGC class types of the MCP tool output fields read under an MCP Tool
+        (mcpServerAssetId, or a toolSchemas entry pointing at an MCP Tool). Not
+        used for scanned schemas, which keep reading flat-file columns.
     pathSchemas:
       type: array
       items:

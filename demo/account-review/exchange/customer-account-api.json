@@ -1,0 +1,189 @@
+{
+ "openapi": "3.0.3",
+ "info": {
+  "title": "Customer Account API",
+  "version": "1.0.0",
+  "description": "Mock Customer Account API for the CDGC Semantic Contract 'Account Review' demo. Customer accounts with status flags, loyalty and credit data. Field names are deliberately terse; their business meaning is governed in CDGC. All data is fictitious test data."
+ },
+ "servers": [
+  {
+   "url": "{{GATEWAY_URL}}/customer-account-api/v1",
+   "description": "Omni Gateway"
+  }
+ ],
+ "paths": {
+  "/accounts/{accountId}": {
+   "get": {
+    "operationId": "get_account",
+    "summary": "Get a customer account",
+    "description": "Returns one customer account: status flag, last invoice date, loyalty and credit data.",
+    "parameters": [
+     {
+      "name": "accountId",
+      "in": "path",
+      "required": true,
+      "description": "Account identifier, e.g. ACC-2041",
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "account_id": {
+           "type": "string",
+           "description": "Account identifier (ACC-nnnn)."
+          },
+          "account_name": {
+           "type": "string",
+           "description": "Registered name of the customer account."
+          },
+          "segment": {
+           "type": "string",
+           "description": "Customer segment: club, retail, corporate."
+          },
+          "is_active": {
+           "type": "boolean",
+           "description": "Account flag."
+          },
+          "last_invoice_date": {
+           "type": "string",
+           "description": "Date (YYYY-MM-DD)."
+          },
+          "loyalty_score": {
+           "type": "integer",
+           "description": "Loyalty value."
+          },
+          "credit_limit": {
+           "type": "number",
+           "description": "Credit limit."
+          },
+          "account_manager": {
+           "type": "string",
+           "description": "Name of the account manager."
+          },
+          "as_of_date": {
+           "type": "string",
+           "description": "Date (YYYY-MM-DD)."
+          }
+         },
+         "required": [
+          "account_id",
+          "account_name"
+         ]
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "Not found",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "error": {
+           "type": "string"
+          },
+          "message": {
+           "type": "string"
+          }
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/accounts": {
+   "get": {
+    "operationId": "list_accounts",
+    "summary": "List customer accounts",
+    "description": "Lists customer accounts, optionally by segment (club | retail | corporate).",
+    "parameters": [
+     {
+      "name": "segment",
+      "in": "query",
+      "required": false,
+      "description": "Customer segment",
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "accounts": {
+           "type": "array",
+           "items": {
+            "type": "object",
+            "properties": {
+             "account_id": {
+              "type": "string",
+              "description": "Account identifier (ACC-nnnn)."
+             },
+             "account_name": {
+              "type": "string",
+              "description": "Registered name of the customer account."
+             },
+             "segment": {
+              "type": "string",
+              "description": "Customer segment: club, retail, corporate."
+             },
+             "is_active": {
+              "type": "boolean",
+              "description": "Account flag."
+             },
+             "last_invoice_date": {
+              "type": "string",
+              "description": "Date (YYYY-MM-DD)."
+             },
+             "loyalty_score": {
+              "type": "integer",
+              "description": "Loyalty value."
+             },
+             "credit_limit": {
+              "type": "number",
+              "description": "Credit limit."
+             },
+             "account_manager": {
+              "type": "string",
+              "description": "Name of the account manager."
+             },
+             "as_of_date": {
+              "type": "string",
+              "description": "Date (YYYY-MM-DD)."
+             }
+            },
+            "required": [
+             "account_id",
+             "account_name"
+            ]
+           }
+          },
+          "count": {
+           "type": "integer"
+          }
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  }
+ }
+}

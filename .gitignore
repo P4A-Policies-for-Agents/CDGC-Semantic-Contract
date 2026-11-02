@@ -50,3 +50,6 @@ Thumbs.db
 .idea/
 .vscode/
 *.swp
+
+# Account Review demo: tenant ids
+demo/account-review/*.local.json

@@ -1,0 +1,259 @@
+{
+ "businessArea": {
+  "name": "Account Review",
+  "description": "Glossary for the account review use case: customer status, revenue and stock terms whose meaning differs from what the API field names suggest."
+ },
+ "terms": [
+  {
+   "name": "Account Open Flag",
+   "securityClassification": "Internal",
+   "description": "True when the customer account is open for ordering (not closed or blocked). It does NOT mean the customer is an Active Customer: an open account can have bought nothing for months. Use Last Invoice Date to decide whether a customer is active.",
+   "businessLogic": "Active Customer = Last Invoice Date within 90 days of the reporting as-of date. is_active only says the account is open.",
+   "examples": [
+    "true: account open, may or may not be an Active Customer",
+    "false: account closed or blocked"
+   ],
+   "formatDescription": "Boolean",
+   "isCDE": false,
+   "fields": [
+    {
+     "tool": "customer-account-api_get_account",
+     "path": "is_active"
+    }
+   ]
+  },
+  {
+   "name": "Last Invoice Date",
+   "securityClassification": "Internal",
+   "description": "Date of the customer's most recent invoiced order. This is the date that decides whether a customer is an Active Customer (invoiced within the last 90 days of the as-of date).",
+   "businessLogic": "days_since_invoice = as_of_date - last_invoice_date; Active Customer when days_since_invoice <= 90, otherwise Lapsed.",
+   "examples": [
+    "2026-07-21 with as-of 2026-10-30: 101 days, Lapsed (not active)"
+   ],
+   "formatDescription": "ISO 8601 date, YYYY-MM-DD",
+   "isCDE": true,
+   "fields": [
+    {
+     "tool": "customer-account-api_get_account",
+     "path": "last_invoice_date"
+    }
+   ]
+  },
+  {
+   "name": "Loyalty Tier Rank",
+   "securityClassification": "Internal",
+   "description": "Rank of the customer's loyalty tier, where 1 is the HIGHEST tier: 1 = Platinum, 2 = Gold, 3 = Silver, 4 = Bronze. A lower number is a better customer; it is a rank, not a score.",
+   "businessLogic": "Lower is better. Never average or compare it as a score.",
+   "examples": [
+    "1 = Platinum (top tier)",
+    "4 = Bronze (entry tier)"
+   ],
+   "formatDescription": "Integer 1-4",
+   "isCDE": false,
+   "fields": [
+    {
+     "tool": "customer-account-api_get_account",
+     "path": "loyalty_score"
+    }
+   ]
+  },
+  {
+   "name": "Credit Limit",
+   "securityClassification": "Confidential",
+   "description": "Maximum open receivables allowed for the account, in CHF. Internal credit risk data.",
+   "businessLogic": "",
+   "examples": [],
+   "formatDescription": "Decimal, CHF",
+   "isCDE": false,
+   "fields": [
+    {
+     "tool": "customer-account-api_get_account",
+     "path": "credit_limit"
+    }
+   ]
+  },
+  {
+   "name": "Reporting As-Of Date",
+   "securityClassification": "Public",
+   "description": "The date the figures in this response were computed for. Use it, not today's date, for any day count.",
+   "businessLogic": "",
+   "examples": [],
+   "formatDescription": "ISO 8601 date, YYYY-MM-DD",
+   "isCDE": false,
+   "fields": [
+    {
+     "tool": "customer-account-api_get_account",
+     "path": "as_of_date"
+    },
+    {
+     "tool": "stock-position-api_get_stock_position",
+     "path": "as_of_date"
+    }
+   ]
+  },
+  {
+   "name": "Order Booking Date",
+   "securityClassification": "Internal",
+   "description": "Date the order was booked (entered). It is not the invoice date and does not by itself make the order revenue.",
+   "businessLogic": "",
+   "examples": [
+    "2026-09-29"
+   ],
+   "formatDescription": "ISO 8601 date, YYYY-MM-DD",
+   "isCDE": false,
+   "fields": [
+    {
+     "tool": "order-ledger-api_list_account_orders",
+     "path": "orders[].order_date"
+    }
+   ]
+  },
+  {
+   "name": "Order Status",
+   "securityClassification": "Internal",
+   "description": "Lifecycle status of a sales order. Only orders with status invoiced count as revenue; pending orders are open (not yet revenue) and cancelled orders are never revenue.",
+   "businessLogic": "Revenue includes order_status = invoiced only.",
+   "examples": [
+    "invoiced: revenue",
+    "pending: open order, not revenue",
+    "cancelled: never revenue"
+   ],
+   "formatDescription": "Text, one of pending | invoiced | cancelled",
+   "isCDE": true,
+   "fields": [
+    {
+     "tool": "order-ledger-api_list_account_orders",
+     "path": "orders[].order_status"
+    }
+   ]
+  },
+  {
+   "name": "Gross Order Value",
+   "securityClassification": "Confidential",
+   "description": "Order value in MINOR currency units (Rappen: 100 = CHF 1.00), INCLUDING 8.1 % Swiss VAT. It is not net revenue: Net Revenue = sum of order_total over invoiced orders / 100 / 1.081.",
+   "businessLogic": "net_revenue_chf = sum(order_total where order_status = invoiced) / 100 / 1.081",
+   "examples": [
+    "486450 = CHF 4,864.50 incl. VAT = CHF 4,500.00 net"
+   ],
+   "formatDescription": "Integer, minor units (Rappen), VAT included",
+   "isCDE": true,
+   "fields": [
+    {
+     "tool": "order-ledger-api_list_account_orders",
+     "path": "orders[].order_total"
+    }
+   ]
+  },
+  {
+   "name": "Physical Stock On Hand",
+   "securityClassification": "Internal",
+   "description": "Units physically in the warehouse, INCLUDING units already committed to other orders and units on quality hold. It is not what can be promised to a customer: Available To Promise = qty_available - qty_committed - qty_blocked.",
+   "businessLogic": "available_to_promise = qty_available - qty_committed - qty_blocked",
+   "examples": [
+    "45 on hand - 20 committed - 10 on hold = 15 available to promise"
+   ],
+   "formatDescription": "Integer, units",
+   "isCDE": true,
+   "fields": [
+    {
+     "tool": "stock-position-api_get_stock_position",
+     "path": "qty_available"
+    }
+   ]
+  },
+  {
+   "name": "Committed Quantity",
+   "securityClassification": "Internal",
+   "description": "Units on hand already allocated to other confirmed orders. Not available for a new or pending order.",
+   "businessLogic": "",
+   "examples": [],
+   "formatDescription": "Integer, units",
+   "isCDE": false,
+   "fields": [
+    {
+     "tool": "stock-position-api_get_stock_position",
+     "path": "qty_committed"
+    }
+   ]
+  },
+  {
+   "name": "Quality Hold Quantity",
+   "securityClassification": "Internal",
+   "description": "Units on hand blocked by quality control (inspection, damage, recall). They cannot be shipped.",
+   "businessLogic": "",
+   "examples": [],
+   "formatDescription": "Integer, units",
+   "isCDE": false,
+   "fields": [
+    {
+     "tool": "stock-position-api_get_stock_position",
+     "path": "qty_blocked"
+    }
+   ]
+  },
+  {
+   "name": "Active Customer",
+   "securityClassification": "Internal",
+   "description": "A customer with at least one invoiced order in the 90 days before the reporting as-of date. Derived from Last Invoice Date, never from Account Open Flag.",
+   "businessLogic": "Last Invoice Date within 90 days of the as-of date.",
+   "examples": [],
+   "formatDescription": "Derived",
+   "isCDE": true,
+   "fields": []
+  },
+  {
+   "name": "Net Revenue",
+   "securityClassification": "Confidential",
+   "description": "Invoiced sales in CHF, excluding VAT, excluding pending and cancelled orders.",
+   "businessLogic": "sum(order_total where order_status = invoiced) / 100 / 1.081",
+   "examples": [
+    "CHF 10,000.00 for ACC-2041 in 2026-Q3"
+   ],
+   "formatDescription": "Decimal, CHF, VAT excluded",
+   "isCDE": true,
+   "fields": []
+  },
+  {
+   "name": "Available To Promise",
+   "securityClassification": "Internal",
+   "description": "Units that can be promised to a customer now: on hand minus committed minus quality hold.",
+   "businessLogic": "qty_available - qty_committed - qty_blocked",
+   "examples": [
+    "15 for HELM-TRAIL-26 on 2026-10-30"
+   ],
+   "formatDescription": "Integer, units",
+   "isCDE": true,
+   "fields": []
+  }
+ ],
+ "related": [
+  [
+   "Account Open Flag",
+   "Active Customer"
+  ],
+  [
+   "Last Invoice Date",
+   "Active Customer"
+  ],
+  [
+   "Gross Order Value",
+   "Net Revenue"
+  ],
+  [
+   "Order Status",
+   "Net Revenue"
+  ],
+  [
+   "Physical Stock On Hand",
+   "Available To Promise"
+  ],
+  [
+   "Committed Quantity",
+   "Available To Promise"
+  ],
+  [
+   "Quality Hold Quantity",
+   "Available To Promise"
+  ]
+ ]
+}

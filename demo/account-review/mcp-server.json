@@ -1,0 +1,251 @@
+{
+ "name": "Account Review MCP",
+ "type": "mock",
+ "description": "Account Review MCP: customer account, order ledger and stock position tools for the CDGC Semantic Contract demo. Tool names match the MCP Bridge over the three Exchange REST APIs (<asset>_<operationId>).",
+ "tools": [
+  {
+   "name": "customer-account-api_get_account",
+   "description": "Returns one customer account: status flag, last invoice date, loyalty and credit data.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "accountId": {
+      "type": "string",
+      "description": "Account identifier, e.g. ACC-2041"
+     }
+    },
+    "required": [
+     "accountId"
+    ]
+   },
+   "outputSchema": {
+    "type": "object",
+    "properties": {
+     "account_id": {
+      "type": "string",
+      "description": "Account identifier (ACC-nnnn)."
+     },
+     "account_name": {
+      "type": "string",
+      "description": "Registered name of the customer account."
+     },
+     "segment": {
+      "type": "string",
+      "description": "Customer segment: club, retail, corporate."
+     },
+     "is_active": {
+      "type": "boolean",
+      "description": "Account flag."
+     },
+     "last_invoice_date": {
+      "type": "string",
+      "description": "Date (YYYY-MM-DD)."
+     },
+     "loyalty_score": {
+      "type": "integer",
+      "description": "Loyalty value."
+     },
+     "credit_limit": {
+      "type": "number",
+      "description": "Credit limit."
+     },
+     "account_manager": {
+      "type": "string",
+      "description": "Name of the account manager."
+     },
+     "as_of_date": {
+      "type": "string",
+      "description": "Date (YYYY-MM-DD)."
+     }
+    },
+    "required": [
+     "account_id",
+     "account_name"
+    ]
+   },
+   "mock_scenarios": [
+    {
+     "name": "Velo Club Lausanne (ACC-2041)",
+     "condition": {
+      "field": "accountId",
+      "operator": "===",
+      "value": "ACC-2041"
+     },
+     "response": "{\"account_id\": \"ACC-2041\", \"account_name\": \"Velo Club Lausanne\", \"segment\": \"club\", \"is_active\": true, \"last_invoice_date\": \"2026-07-21\", \"loyalty_score\": 1, \"credit_limit\": 50000, \"account_manager\": \"Lea Moret\", \"as_of_date\": \"2026-10-30\"}",
+     "responseType": "json"
+    },
+    {
+     "name": "Genève Cycling Academy (ACC-2042)",
+     "condition": {
+      "field": "accountId",
+      "operator": "===",
+      "value": "ACC-2042"
+     },
+     "response": "{\"account_id\": \"ACC-2042\", \"account_name\": \"Gen\\u00e8ve Cycling Academy\", \"segment\": \"club\", \"is_active\": true, \"last_invoice_date\": \"2026-10-14\", \"loyalty_score\": 3, \"credit_limit\": 20000, \"account_manager\": \"Lea Moret\", \"as_of_date\": \"2026-10-30\"}",
+     "responseType": "json"
+    },
+    {
+     "name": "Rhône Valley Riders (ACC-2043)",
+     "condition": {
+      "field": "accountId",
+      "operator": "===",
+      "value": "ACC-2043"
+     },
+     "response": "{\"account_id\": \"ACC-2043\", \"account_name\": \"Rh\\u00f4ne Valley Riders\", \"segment\": \"club\", \"is_active\": false, \"last_invoice_date\": \"2025-11-02\", \"loyalty_score\": 4, \"credit_limit\": 5000, \"account_manager\": \"Marc Favre\", \"as_of_date\": \"2026-10-30\"}",
+     "responseType": "json"
+    }
+   ]
+  },
+  {
+   "name": "order-ledger-api_list_account_orders",
+   "description": "Returns the sales orders of one account for a reporting period (default 2026-Q3).",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "accountId": {
+      "type": "string",
+      "description": "Account identifier, e.g. ACC-2041"
+     },
+     "period": {
+      "type": "string",
+      "description": "Reporting period, e.g. 2026-Q3"
+     }
+    },
+    "required": [
+     "accountId"
+    ]
+   },
+   "outputSchema": {
+    "type": "object",
+    "properties": {
+     "account_id": {
+      "type": "string",
+      "description": "Account identifier (ACC-nnnn)."
+     },
+     "period": {
+      "type": "string",
+      "description": "Reporting period, e.g. 2026-Q3."
+     },
+     "orders": {
+      "type": "array",
+      "items": {
+       "type": "object",
+       "properties": {
+        "order_id": {
+         "type": "string",
+         "description": "Sales order number (SO-nnnn)."
+        },
+        "order_date": {
+         "type": "string",
+         "description": "Date (YYYY-MM-DD)."
+        },
+        "order_status": {
+         "type": "string",
+         "description": "Status: pending, invoiced, cancelled."
+        },
+        "order_total": {
+         "type": "integer",
+         "description": "Order total."
+        },
+        "currency": {
+         "type": "string",
+         "description": "ISO 4217 currency code."
+        },
+        "line_summary": {
+         "type": "string",
+         "description": "Short summary of the order lines."
+        }
+       },
+       "required": [
+        "order_id"
+       ]
+      }
+     },
+     "count": {
+      "type": "integer"
+     }
+    }
+   },
+   "mock_scenarios": [
+    {
+     "name": "Velo Club Lausanne Q3 orders (ACC-2041)",
+     "condition": {
+      "field": "accountId",
+      "operator": "===",
+      "value": "ACC-2041"
+     },
+     "response": "{\"account_id\": \"ACC-2041\", \"period\": \"2026-Q3\", \"orders\": [{\"order_id\": \"SO-7101\", \"order_date\": \"2026-07-04\", \"order_status\": \"invoiced\", \"order_total\": 486450, \"currency\": \"CHF\", \"line_summary\": \"25 x Club Jersey 26\"}, {\"order_id\": \"SO-7102\", \"order_date\": \"2026-07-21\", \"order_status\": \"invoiced\", \"order_total\": 594550, \"currency\": \"CHF\", \"line_summary\": \"10 x Team Bib Shorts, 20 x Bottle Cage\"}, {\"order_id\": \"SO-7103\", \"order_date\": \"2026-08-12\", \"order_status\": \"cancelled\", \"order_total\": 1621500, \"currency\": \"CHF\", \"line_summary\": \"6 x Carbon Wheelset 50mm\"}, {\"order_id\": \"SO-7104\", \"order_date\": \"2026-09-29\", \"order_status\": \"pending\", \"order_total\": 583740, \"currency\": \"CHF\", \"line_summary\": \"30 x Trail Helmet 26\"}], \"count\": 4}",
+     "responseType": "json"
+    }
+   ]
+  },
+  {
+   "name": "stock-position-api_get_stock_position",
+   "description": "Returns the warehouse quantities of one SKU.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "sku": {
+      "type": "string",
+      "description": "Stock keeping unit, e.g. HELM-TRAIL-26"
+     }
+    },
+    "required": [
+     "sku"
+    ]
+   },
+   "outputSchema": {
+    "type": "object",
+    "properties": {
+     "sku": {
+      "type": "string",
+      "description": "Stock keeping unit."
+     },
+     "product_name": {
+      "type": "string",
+      "description": "Customer-facing product name."
+     },
+     "warehouse_id": {
+      "type": "string",
+      "description": "Warehouse identifier (WH-xxx-nn)."
+     },
+     "qty_available": {
+      "type": "integer",
+      "description": "Quantity."
+     },
+     "qty_committed": {
+      "type": "integer",
+      "description": "Quantity."
+     },
+     "qty_blocked": {
+      "type": "integer",
+      "description": "Quantity."
+     },
+     "unit_price": {
+      "type": "number",
+      "description": "List price per unit in CHF, excluding VAT."
+     },
+     "as_of_date": {
+      "type": "string",
+      "description": "Date (YYYY-MM-DD)."
+     }
+    },
+    "required": [
+     "sku"
+    ]
+   },
+   "mock_scenarios": [
+    {
+     "name": "Trail Helmet 26 (HELM-TRAIL-26)",
+     "condition": {
+      "field": "sku",
+      "operator": "===",
+      "value": "HELM-TRAIL-26"
+     },
+     "response": "{\"sku\": \"HELM-TRAIL-26\", \"product_name\": \"Trail Helmet 26\", \"warehouse_id\": \"WH-LAU-01\", \"qty_available\": 45, \"qty_committed\": 20, \"qty_blocked\": 10, \"unit_price\": 180.0, \"as_of_date\": \"2026-10-30\"}",
+     "responseType": "json"
+    }
+   ]
+  }
+ ]
+}

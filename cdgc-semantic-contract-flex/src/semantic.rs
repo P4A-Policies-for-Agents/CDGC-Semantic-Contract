@@ -38,7 +38,9 @@ pub struct TermAttribute {
 /// `restricted`; `None` when the field has no classified term), the term's
 /// name, the term's *meaning* (its catalog description — the semantic content an
 /// `outputSchema` structurally cannot carry), and any configured extra Business
-/// Term attributes present on the term.
+/// Term attributes present on the term. `match_leaf` is set for MCP tool output
+/// fields, whose names are paths (`orders[].order_total`): they match the payload
+/// key at the end of the path.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct GovernedField {
     pub name: String,
@@ -50,6 +52,24 @@ pub struct GovernedField {
     pub meaning: Option<String>,
     #[serde(default)]
     pub attributes: Vec<TermAttribute>,
+    #[serde(default)]
+    pub match_leaf: bool,
+}
+
+/// The payload key an output-field path ends in: `orders[].customer.email` →
+/// `email`, `$.items[*]` → `items`. A name without a path is returned as is.
+pub fn path_leaf(path: &str) -> &str {
+    let p = path.trim();
+    let p = p.strip_prefix("$.").unwrap_or(p);
+    let last = p.rsplit('.').next().unwrap_or(p);
+    let end = last.find('[').unwrap_or(last.len());
+    let leaf = last[..end].trim();
+    if leaf.is_empty() { p } else { leaf }
+}
+
+/// The normalised name a governed field is matched on in the payload.
+fn match_key(f: &GovernedField) -> String {
+    if f.match_leaf { normalize(path_leaf(&f.name)) } else { normalize(&f.name) }
 }
 
 /// Cached, parsed per-field semantic map for one schema asset, plus its governed
@@ -431,7 +451,7 @@ pub fn build_contract(
     let mut entries: Vec<ContractField> = Vec::new();
     for f in fields {
         if let Some(keys) = present {
-            if !keys.contains(&normalize(&f.name)) {
+            if !keys.contains(&match_key(f)) {
                 continue;
             }
         }
@@ -537,7 +557,12 @@ mod tests {
             term: term.map(str::to_string),
             meaning: meaning.map(str::to_string),
             attributes: Vec::new(),
+            match_leaf: false,
         }
+    }
+
+    fn mcp_field(path: &str, class: Option<&str>, term: &str, meaning: &str) -> GovernedField {
+        GovernedField { match_leaf: true, ..gf(path, class, Some(term), Some(meaning)) }
     }
 
     #[test]
@@ -791,5 +816,45 @@ mod tests {
         assert_eq!(resolve_path_schema(&entries, "/v1/orders/9").as_deref(), Some("schema-root"));
         assert_eq!(resolve_path_schema(&entries, "/v1x"), None); // segment boundary
         assert_eq!(resolve_path_schema(&entries, "/other"), None);
+    }
+
+    #[test]
+    fn path_leaf_takes_the_last_key() {
+        assert_eq!(path_leaf("orders[].order_total"), "order_total");
+        assert_eq!(path_leaf("account.customer_status"), "customer_status");
+        assert_eq!(path_leaf("stock_positions[].warehouse.qty_available"), "qty_available");
+        assert_eq!(path_leaf("$.items[*]"), "items");
+        assert_eq!(path_leaf("revenue[]"), "revenue");
+        assert_eq!(path_leaf("is_active"), "is_active");
+    }
+
+    #[test]
+    fn mcp_output_fields_match_on_the_leaf() {
+        // A2D McpToolOutputField names are paths; the payload carries bare keys.
+        let fields = vec![
+            mcp_field("orders[].order_total", Some("internal"), "Gross Order Value", "Minor units (Rappen), incl. VAT."),
+            mcp_field("account.is_active", None, "Account Open Flag", "The account is open; says nothing about purchasing."),
+        ];
+        let payload = json!({"orders": [{"order_total": 129000}], "account": {"is_active": true}});
+        let present = collect_present_keys(&payload);
+        let entries = build_contract(&fields, Some(&present), &obligations(), 24, 400);
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].field, "orders[].order_total"); // internal sorts before unclassified
+        assert_eq!(entries[1].field, "account.is_active");
+    }
+
+    #[test]
+    fn flat_fields_keep_exact_matching() {
+        // 1.0.x behaviour: a FlatField name is matched as a whole, never by its leaf.
+        let fields = vec![gf("orders[].order_total", Some("internal"), Some("T"), Some("M"))];
+        let present = collect_present_keys(&json!({"order_total": 1}));
+        assert!(build_contract(&fields, Some(&present), &obligations(), 24, 400).is_empty());
+    }
+
+    #[test]
+    fn cached_map_without_match_leaf_deserializes() {
+        // A map cached by 1.0.x has no match_leaf; it reads as exact matching.
+        let f: GovernedField = serde_json::from_value(json!({"name": "email_address"})).unwrap();
+        assert!(!f.match_leaf);
     }
 }

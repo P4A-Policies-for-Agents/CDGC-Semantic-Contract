@@ -1,0 +1,180 @@
+{
+ "openapi": "3.0.3",
+ "info": {
+  "title": "Order Ledger API",
+  "version": "1.0.0",
+  "description": "Mock Order Ledger API for the CDGC Semantic Contract 'Account Review' demo. Sales orders per customer account and period, in every status. Amounts follow the ledger convention governed in CDGC. All data is fictitious test data."
+ },
+ "servers": [
+  {
+   "url": "{{GATEWAY_URL}}/order-ledger-api/v1",
+   "description": "Omni Gateway"
+  }
+ ],
+ "paths": {
+  "/accounts/{accountId}/orders": {
+   "get": {
+    "operationId": "list_account_orders",
+    "summary": "List an account's orders for a period",
+    "description": "Returns the sales orders of one account for a reporting period (default 2026-Q3).",
+    "parameters": [
+     {
+      "name": "accountId",
+      "in": "path",
+      "required": true,
+      "description": "Account identifier, e.g. ACC-2041",
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "period",
+      "in": "query",
+      "required": false,
+      "description": "Reporting period, e.g. 2026-Q3",
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "account_id": {
+           "type": "string",
+           "description": "Account identifier (ACC-nnnn)."
+          },
+          "period": {
+           "type": "string",
+           "description": "Reporting period, e.g. 2026-Q3."
+          },
+          "orders": {
+           "type": "array",
+           "items": {
+            "type": "object",
+            "properties": {
+             "order_id": {
+              "type": "string",
+              "description": "Sales order number (SO-nnnn)."
+             },
+             "order_date": {
+              "type": "string",
+              "description": "Date (YYYY-MM-DD)."
+             },
+             "order_status": {
+              "type": "string",
+              "description": "Status: pending, invoiced, cancelled."
+             },
+             "order_total": {
+              "type": "integer",
+              "description": "Order total."
+             },
+             "currency": {
+              "type": "string",
+              "description": "ISO 4217 currency code."
+             },
+             "line_summary": {
+              "type": "string",
+              "description": "Short summary of the order lines."
+             }
+            },
+            "required": [
+             "order_id"
+            ]
+           }
+          },
+          "count": {
+           "type": "integer"
+          }
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/orders/{orderId}": {
+   "get": {
+    "operationId": "get_order",
+    "summary": "Get a sales order",
+    "description": "Returns one sales order by number.",
+    "parameters": [
+     {
+      "name": "orderId",
+      "in": "path",
+      "required": true,
+      "description": "Sales order number, e.g. SO-7104",
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "order_id": {
+           "type": "string",
+           "description": "Sales order number (SO-nnnn)."
+          },
+          "order_date": {
+           "type": "string",
+           "description": "Date (YYYY-MM-DD)."
+          },
+          "order_status": {
+           "type": "string",
+           "description": "Status: pending, invoiced, cancelled."
+          },
+          "order_total": {
+           "type": "integer",
+           "description": "Order total."
+          },
+          "currency": {
+           "type": "string",
+           "description": "ISO 4217 currency code."
+          },
+          "line_summary": {
+           "type": "string",
+           "description": "Short summary of the order lines."
+          }
+         },
+         "required": [
+          "order_id"
+         ]
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "Not found",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "error": {
+           "type": "string"
+          },
+          "message": {
+           "type": "string"
+          }
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  }
+ }
+}

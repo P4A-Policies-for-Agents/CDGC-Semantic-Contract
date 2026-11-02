@@ -1,0 +1,147 @@
+{
+ "type": "rest_api",
+ "version": "1.0",
+ "api": {
+  "name": "Order Ledger API",
+  "description": "Mock Order Ledger API for the CDGC Semantic Contract 'Account Review' demo. Sales orders per customer account and period, in every status. Amounts follow the ledger convention governed in CDGC. All data is fictitious test data.",
+  "base_path": "/order-ledger-api/v1",
+  "auth_enabled": false,
+  "endpoints": [
+   {
+    "method": "GET",
+    "path": "/accounts/{accountId}/orders",
+    "summary": "List an account's orders for a period",
+    "description": "Returns the sales orders of one account for a reporting period (default 2026-Q3).",
+    "mock_scenarios": [
+     {
+      "name": "Velo Club Lausanne Q3 orders (ACC-2041)",
+      "priority": 10,
+      "conditions": [
+       {
+        "field": "accountId",
+        "value": "ACC-2041",
+        "source": "path_param",
+        "operator": "==="
+       }
+      ],
+      "response": {
+       "statusCode": 200,
+       "headers": {
+        "Content-Type": "application/json"
+       },
+       "body": "{\"account_id\": \"ACC-2041\", \"period\": \"2026-Q3\", \"orders\": [{\"order_id\": \"SO-7101\", \"order_date\": \"2026-07-04\", \"order_status\": \"invoiced\", \"order_total\": 486450, \"currency\": \"CHF\", \"line_summary\": \"25 x Club Jersey 26\"}, {\"order_id\": \"SO-7102\", \"order_date\": \"2026-07-21\", \"order_status\": \"invoiced\", \"order_total\": 594550, \"currency\": \"CHF\", \"line_summary\": \"10 x Team Bib Shorts, 20 x Bottle Cage\"}, {\"order_id\": \"SO-7103\", \"order_date\": \"2026-08-12\", \"order_status\": \"cancelled\", \"order_total\": 1621500, \"currency\": \"CHF\", \"line_summary\": \"6 x Carbon Wheelset 50mm\"}, {\"order_id\": \"SO-7104\", \"order_date\": \"2026-09-29\", \"order_status\": \"pending\", \"order_total\": 583740, \"currency\": \"CHF\", \"line_summary\": \"30 x Trail Helmet 26\"}], \"count\": 4}"
+      }
+     },
+     {
+      "name": "No orders in period",
+      "priority": 100,
+      "conditions": [],
+      "response": {
+       "statusCode": 200,
+       "headers": {
+        "Content-Type": "application/json"
+       },
+       "body": "{\"account_id\": \"unknown\", \"period\": \"2026-Q3\", \"orders\": [], \"count\": 0}"
+      }
+     }
+    ]
+   },
+   {
+    "method": "GET",
+    "path": "/orders/{orderId}",
+    "summary": "Get a sales order",
+    "description": "Returns one sales order by number.",
+    "mock_scenarios": [
+     {
+      "name": "Order SO-7101",
+      "priority": 10,
+      "conditions": [
+       {
+        "field": "orderId",
+        "value": "SO-7101",
+        "source": "path_param",
+        "operator": "==="
+       }
+      ],
+      "response": {
+       "statusCode": 200,
+       "headers": {
+        "Content-Type": "application/json"
+       },
+       "body": "{\"order_id\": \"SO-7101\", \"order_date\": \"2026-07-04\", \"order_status\": \"invoiced\", \"order_total\": 486450, \"currency\": \"CHF\", \"line_summary\": \"25 x Club Jersey 26\"}"
+      }
+     },
+     {
+      "name": "Order SO-7102",
+      "priority": 10,
+      "conditions": [
+       {
+        "field": "orderId",
+        "value": "SO-7102",
+        "source": "path_param",
+        "operator": "==="
+       }
+      ],
+      "response": {
+       "statusCode": 200,
+       "headers": {
+        "Content-Type": "application/json"
+       },
+       "body": "{\"order_id\": \"SO-7102\", \"order_date\": \"2026-07-21\", \"order_status\": \"invoiced\", \"order_total\": 594550, \"currency\": \"CHF\", \"line_summary\": \"10 x Team Bib Shorts, 20 x Bottle Cage\"}"
+      }
+     },
+     {
+      "name": "Order SO-7103",
+      "priority": 10,
+      "conditions": [
+       {
+        "field": "orderId",
+        "value": "SO-7103",
+        "source": "path_param",
+        "operator": "==="
+       }
+      ],
+      "response": {
+       "statusCode": 200,
+       "headers": {
+        "Content-Type": "application/json"
+       },
+       "body": "{\"order_id\": \"SO-7103\", \"order_date\": \"2026-08-12\", \"order_status\": \"cancelled\", \"order_total\": 1621500, \"currency\": \"CHF\", \"line_summary\": \"6 x Carbon Wheelset 50mm\"}"
+      }
+     },
+     {
+      "name": "Order SO-7104",
+      "priority": 10,
+      "conditions": [
+       {
+        "field": "orderId",
+        "value": "SO-7104",
+        "source": "path_param",
+        "operator": "==="
+       }
+      ],
+      "response": {
+       "statusCode": 200,
+       "headers": {
+        "Content-Type": "application/json"
+       },
+       "body": "{\"order_id\": \"SO-7104\", \"order_date\": \"2026-09-29\", \"order_status\": \"pending\", \"order_total\": 583740, \"currency\": \"CHF\", \"line_summary\": \"30 x Trail Helmet 26\"}"
+      }
+     },
+     {
+      "name": "Order not found",
+      "priority": 100,
+      "conditions": [],
+      "response": {
+       "statusCode": 404,
+       "headers": {
+        "Content-Type": "application/json"
+       },
+       "body": "{\"error\": \"not_found\", \"message\": \"No order with this number\"}"
+      }
+     }
+    ]
+   }
+  ]
+ }
+}

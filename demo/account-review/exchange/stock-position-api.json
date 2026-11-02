@@ -1,0 +1,101 @@
+{
+ "openapi": "3.0.3",
+ "info": {
+  "title": "Stock Position API",
+  "version": "1.0.0",
+  "description": "Mock Stock Position API for the CDGC Semantic Contract 'Account Review' demo. Stock quantities per SKU in the warehouse ledger's own terms. All data is fictitious test data."
+ },
+ "servers": [
+  {
+   "url": "{{GATEWAY_URL}}/stock-position-api/v1",
+   "description": "Omni Gateway"
+  }
+ ],
+ "paths": {
+  "/stock/{sku}": {
+   "get": {
+    "operationId": "get_stock_position",
+    "summary": "Get the stock position of a SKU",
+    "description": "Returns the warehouse quantities of one SKU.",
+    "parameters": [
+     {
+      "name": "sku",
+      "in": "path",
+      "required": true,
+      "description": "Stock keeping unit, e.g. HELM-TRAIL-26",
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "sku": {
+           "type": "string",
+           "description": "Stock keeping unit."
+          },
+          "product_name": {
+           "type": "string",
+           "description": "Customer-facing product name."
+          },
+          "warehouse_id": {
+           "type": "string",
+           "description": "Warehouse identifier (WH-xxx-nn)."
+          },
+          "qty_available": {
+           "type": "integer",
+           "description": "Quantity."
+          },
+          "qty_committed": {
+           "type": "integer",
+           "description": "Quantity."
+          },
+          "qty_blocked": {
+           "type": "integer",
+           "description": "Quantity."
+          },
+          "unit_price": {
+           "type": "number",
+           "description": "List price per unit in CHF, excluding VAT."
+          },
+          "as_of_date": {
+           "type": "string",
+           "description": "Date (YYYY-MM-DD)."
+          }
+         },
+         "required": [
+          "sku"
+         ]
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "Not found",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "error": {
+           "type": "string"
+          },
+          "message": {
+           "type": "string"
+          }
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  }
+ }
+}
