@@ -46,7 +46,7 @@ ORDERS = [
     {"order_id": "SO-7103", "order_date": "2026-08-12", "order_status": "cancelled", "order_total": 1621500,
      "currency": "CHF", "line_summary": "6 x Carbon Wheelset 50mm"},
     {"order_id": "SO-7104", "order_date": "2026-09-29", "order_status": "pending", "order_total": 583740,
-     "currency": "CHF", "line_summary": "30 x Trail Helmet 26"},
+     "currency": "CHF", "line_summary": "30 x Trail Helmet 26", "sku": "HELM-TRAIL-26", "quantity": 30},
 ]
 STOCK = {
     "sku": "HELM-TRAIL-26",
@@ -89,6 +89,8 @@ ORDER_SCHEMA = obj({
     "order_total": d(I, "Order total."),
     "currency": d(S, "ISO 4217 currency code."),
     "line_summary": d(S, "Short summary of the order lines."),
+    "sku": d(S, "Stock keeping unit of a single-SKU order line, for the stock lookup."),
+    "quantity": d(I, "Ordered quantity of that SKU."),
 }, ["order_id"])
 ORDER_LIST_SCHEMA = obj({
     "account_id": d(S, "Account identifier (ACC-nnnn)."),

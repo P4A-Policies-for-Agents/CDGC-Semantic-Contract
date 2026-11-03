@@ -81,6 +81,14 @@
              "line_summary": {
               "type": "string",
               "description": "Short summary of the order lines."
+             },
+             "sku": {
+              "type": "string",
+              "description": "Stock keeping unit of a single-SKU order line, for the stock lookup."
+             },
+             "quantity": {
+              "type": "integer",
+              "description": "Ordered quantity of that SKU."
              }
             },
             "required": [
@@ -146,6 +154,14 @@
           "line_summary": {
            "type": "string",
            "description": "Short summary of the order lines."
+          },
+          "sku": {
+           "type": "string",
+           "description": "Stock keeping unit of a single-SKU order line, for the stock lookup."
+          },
+          "quantity": {
+           "type": "integer",
+           "description": "Ordered quantity of that SKU."
           }
          },
          "required": [

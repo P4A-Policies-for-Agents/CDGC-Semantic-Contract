@@ -154,6 +154,14 @@
         "line_summary": {
          "type": "string",
          "description": "Short summary of the order lines."
+        },
+        "sku": {
+         "type": "string",
+         "description": "Stock keeping unit of a single-SKU order line, for the stock lookup."
+        },
+        "quantity": {
+         "type": "integer",
+         "description": "Ordered quantity of that SKU."
         }
        },
        "required": [
@@ -174,7 +182,7 @@
       "operator": "===",
       "value": "ACC-2041"
      },
-     "response": "{\"account_id\": \"ACC-2041\", \"period\": \"2026-Q3\", \"orders\": [{\"order_id\": \"SO-7101\", \"order_date\": \"2026-07-04\", \"order_status\": \"invoiced\", \"order_total\": 486450, \"currency\": \"CHF\", \"line_summary\": \"25 x Club Jersey 26\"}, {\"order_id\": \"SO-7102\", \"order_date\": \"2026-07-21\", \"order_status\": \"invoiced\", \"order_total\": 594550, \"currency\": \"CHF\", \"line_summary\": \"10 x Team Bib Shorts, 20 x Bottle Cage\"}, {\"order_id\": \"SO-7103\", \"order_date\": \"2026-08-12\", \"order_status\": \"cancelled\", \"order_total\": 1621500, \"currency\": \"CHF\", \"line_summary\": \"6 x Carbon Wheelset 50mm\"}, {\"order_id\": \"SO-7104\", \"order_date\": \"2026-09-29\", \"order_status\": \"pending\", \"order_total\": 583740, \"currency\": \"CHF\", \"line_summary\": \"30 x Trail Helmet 26\"}], \"count\": 4}",
+     "response": "{\"account_id\": \"ACC-2041\", \"period\": \"2026-Q3\", \"orders\": [{\"order_id\": \"SO-7101\", \"order_date\": \"2026-07-04\", \"order_status\": \"invoiced\", \"order_total\": 486450, \"currency\": \"CHF\", \"line_summary\": \"25 x Club Jersey 26\"}, {\"order_id\": \"SO-7102\", \"order_date\": \"2026-07-21\", \"order_status\": \"invoiced\", \"order_total\": 594550, \"currency\": \"CHF\", \"line_summary\": \"10 x Team Bib Shorts, 20 x Bottle Cage\"}, {\"order_id\": \"SO-7103\", \"order_date\": \"2026-08-12\", \"order_status\": \"cancelled\", \"order_total\": 1621500, \"currency\": \"CHF\", \"line_summary\": \"6 x Carbon Wheelset 50mm\"}, {\"order_id\": \"SO-7104\", \"order_date\": \"2026-09-29\", \"order_status\": \"pending\", \"order_total\": 583740, \"currency\": \"CHF\", \"line_summary\": \"30 x Trail Helmet 26\", \"sku\": \"HELM-TRAIL-26\", \"quantity\": 30}], \"count\": 4}",
      "responseType": "json"
     }
    ]

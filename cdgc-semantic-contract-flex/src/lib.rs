@@ -37,6 +37,8 @@ mod generated;
 mod semantic;
 
 use std::rc::Rc;
+use std::cell::RefCell;
+use std::collections::HashMap;
 use std::time::{Duration, SystemTime};
 
 use anyhow::{anyhow, Result};
@@ -57,7 +59,9 @@ use crate::semantic::{
 
 const CLASS_CACHE_NAMESPACE: &str = "csc-classmap";
 const REFRESH_LOCK_NAMESPACE: &str = "csc-refresh-lock";
-const CLASS_CACHE_KEY_PREFIX: &str = "csc-classmap-";
+// v2: entries are stored as a JSON string (see `read_cached`). The new prefix keeps a
+// 1.1.1 policy from reading 1.1.0 entries in a shared (distributed) store.
+const CLASS_CACHE_KEY_PREFIX: &str = "csc-classmap-v2-";
 const REFRESH_LOCK_KEY_PREFIX: &str = "csc-lock-";
 const REFRESH_LOCK_TTL_SECONDS: i64 = 30;
 const REFRESH_LOCK_TTL_MS: u32 = (REFRESH_LOCK_TTL_SECONDS as u32) * 1000;
@@ -515,9 +519,20 @@ async fn governed_fields(
 
 // ─── DataStorage cache (lazy refresh, single-flight, CAS) ───────────────────
 
+// The class map is stored as a JSON *string*, not as the struct itself. The PDK
+// DataStorage default format (fixint) is not self-describing: it can write a
+// `serde_json::Value` (TermAttribute.value) but cannot read one back
+// ("deserialize_any is not supported"). Storing the struct directly made every cache
+// read fail, so only the request that won the refresh lock got annotated.
 async fn read_cached<S: DataStorage>(store: &S, key: &str) -> Option<CachedClassMap> {
-    match store.get::<CachedClassMap>(key).await {
-        Ok(Some((c, _))) => Some(c),
+    match store.get::<String>(key).await {
+        Ok(Some((s, _))) => match decode_class_map(&s) {
+            Ok(c) => Some(c),
+            Err(e) => {
+                logger::warn!("csc: cache entry unreadable: {e}");
+                None
+            }
+        },
         Ok(None) => None,
         Err(e) => {
             logger::warn!("csc: cache read failed: {e}");
@@ -525,15 +540,25 @@ async fn read_cached<S: DataStorage>(store: &S, key: &str) -> Option<CachedClass
         }
     }
 }
+fn encode_class_map(entry: &CachedClassMap) -> Result<String, serde_json::Error> {
+    serde_json::to_string(entry)
+}
+fn decode_class_map(s: &str) -> Result<CachedClassMap, serde_json::Error> {
+    serde_json::from_str(s)
+}
 async fn write_cached<S: DataStorage>(store: &S, key: &str, entry: &CachedClassMap) {
+    let encoded = match encode_class_map(entry) {
+        Ok(s) => s,
+        Err(e) => { logger::warn!("csc: encode failed: {e}"); return; }
+    };
     for _ in 0..CAS_MAX_RETRIES {
-        match store.get::<CachedClassMap>(key).await {
-            Ok(Some((_, v))) => match store.store(key, &StoreMode::Cas(v), entry).await {
+        match store.get::<String>(key).await {
+            Ok(Some((_, v))) => match store.store(key, &StoreMode::Cas(v), &encoded).await {
                 Ok(()) => return,
                 Err(DataStorageError::CasMismatch) => continue,
                 Err(e) => { logger::warn!("csc: persist failed: {e}"); return; }
             },
-            Ok(None) => match store.store(key, &StoreMode::Absent, entry).await {
+            Ok(None) => match store.store(key, &StoreMode::Absent, &encoded).await {
                 Ok(()) => return,
                 Err(DataStorageError::CasMismatch) => continue,
                 Err(e) => { logger::warn!("csc: persist failed: {e}"); return; }
@@ -567,30 +592,54 @@ async fn try_acquire_refresh_lock<S: DataStorage>(store: &S, key: &str, now: i64
     }
 }
 
+/// Per-worker in-memory class maps, keyed like the shared store. Checked before
+/// the shared store, so a worker that has resolved a map keeps serving it even if
+/// the shared store does not return it.
+type MemCache = RefCell<HashMap<String, CachedClassMap>>;
+
+fn fresh(c: &CachedClassMap, now: i64, ttl: i64) -> bool {
+    now - c.timestamp < ttl
+}
+
 /// Get the (cached, lazily refreshed) semantic map for a schema. `None` = could
 /// not resolve it authoritatively (CDGC error, no cached map) — the annotator then
 /// passes the response through unchanged (fail-open).
 async fn get_class_map<S: DataStorage>(
     client: &HttpClient, config: &Config, clock: &Clock, markers: &MarkerRules,
-    map_store: &S, lock_store: &S, target: &Target,
+    map_store: &S, lock_store: &S, mem: &MemCache, target: &Target,
 ) -> Option<CachedClassMap> {
     let target_key = target.key();
     let key = format!("{CLASS_CACHE_KEY_PREFIX}{target_key}");
     let ttl = config.refresh_interval_seconds.unwrap_or(DEFAULT_REFRESH_INTERVAL_SECONDS).max(0);
     let now = now_secs(clock);
-    let cached = read_cached(map_store, &key).await;
-    if let Some(c) = &cached {
-        if now - c.timestamp < ttl {
-            return cached;
+    let local = mem.borrow().get(&key).cloned();
+    if let Some(c) = &local {
+        if fresh(c, now, ttl) {
+            return local;
         }
     }
-    let lock_key = format!("{REFRESH_LOCK_KEY_PREFIX}{target_key}");
-    if !try_acquire_refresh_lock(lock_store, &lock_key, now).await.unwrap_or(true) {
-        return cached; // someone else is refreshing; serve stale if any.
+    let shared = read_cached(map_store, &key).await;
+    if let Some(c) = &shared {
+        if fresh(c, now, ttl) {
+            mem.borrow_mut().insert(key, c.clone());
+            return shared;
+        }
     }
+    // Newest stale copy, served if another request is refreshing or CDGC fails.
+    let cached = match (local, shared) {
+        (Some(a), Some(b)) => Some(if a.timestamp >= b.timestamp { a } else { b }),
+        (a, b) => a.or(b),
+    };
+    let lock_key = format!("{REFRESH_LOCK_KEY_PREFIX}{target_key}");
+    let got_lock = try_acquire_refresh_lock(lock_store, &lock_key, now).await.unwrap_or(true);
+    if !got_lock && cached.is_some() {
+        return cached; // someone else is refreshing; serve stale.
+    }
+    // No copy at all: resolve it here rather than leave this response unannotated.
     match fetch_class_map(client, config, clock, markers, target).await {
         Ok((fields, name, external_id)) => {
             let entry = CachedClassMap { fields, name, external_id, timestamp: now };
+            mem.borrow_mut().insert(key.clone(), entry.clone());
             write_cached(map_store, &key, &entry).await;
             Some(entry)
         }
@@ -768,6 +817,7 @@ async fn response_filter<S: DataStorage>(
     clock: Rc<Clock>,
     map_store: Rc<S>,
     lock_store: Rc<S>,
+    mem: Rc<MemCache>,
 ) {
     let RequestData::Continue(ctx) = request_data else { return };
     let (Some(target), true) = (ctx.target.clone(), ctx.annotate) else { return };
@@ -836,7 +886,7 @@ async fn response_filter<S: DataStorage>(
 
     // Resolve the schema's semantic map (cached) and build the guidance. Any CDGC
     // failure yields None → pass through unchanged (fail-open).
-    let cc = match get_class_map(&client, &config, &clock, &markers, &*map_store, &*lock_store, &target).await {
+    let cc = match get_class_map(&client, &config, &clock, &markers, &*map_store, &*lock_store, &mem, &target).await {
         Some(cc) => cc,
         None => { let _ = body_state.handler().set_body(&orig); return; }
     };
@@ -887,6 +937,7 @@ fn launch_policy<S: DataStorage + 'static>(
     launcher: Launcher, config: Rc<Config>, client: Rc<HttpClient>, clock: Rc<Clock>,
     map_store: Rc<S>, lock_store: Rc<S>,
 ) -> impl std::future::Future<Output = Result<()>> {
+    let mem: Rc<MemCache> = Rc::new(RefCell::new(HashMap::new()));
     let cfg_req = config.clone();
     let filter = on_request(move |rs| {
         let c = cfg_req.clone();
@@ -898,7 +949,8 @@ fn launch_policy<S: DataStorage + 'static>(
         let ck = clock.clone();
         let ms = map_store.clone();
         let ls = lock_store.clone();
-        async move { response_filter(rs, rd, c, cl, ck, ms, ls).await }
+        let m = mem.clone();
+        async move { response_filter(rs, rd, c, cl, ck, ms, ls, m).await }
     });
     async move { launcher.launch(filter).await.map_err(Into::into) }
 }
@@ -946,5 +998,46 @@ mod tests {
         assert_eq!(schema.key(), "abc"); // 1.0.x cache key unchanged
         assert_eq!(tool.key(), "mcp:srv/abc");
         assert_eq!(tool.label(), "srv/abc");
+    }
+
+    fn sample_map() -> CachedClassMap {
+        CachedClassMap {
+            fields: vec![GovernedField {
+                name: "orders[].order_total".into(),
+                classification: Some("confidential".into()),
+                term: Some("Gross Order Value".into()),
+                meaning: Some("Rappen, incl. VAT".into()),
+                attributes: vec![
+                    TermAttribute { label: "Reference ID".into(), value: json!("BT-89") },
+                    TermAttribute { label: "Examples".into(), value: json!(["486450 = CHF 4,864.50"]) },
+                    TermAttribute { label: "Critical Data Element".into(), value: json!(true) },
+                ],
+                match_leaf: true,
+            }],
+            name: Some("list_account_orders".into()),
+            external_id: None,
+            timestamp: 1_793_617_712,
+        }
+    }
+
+    /// Regression (1.1.0): the struct itself does not survive the PDK DataStorage
+    /// wire format, because `TermAttribute.value` needs `deserialize_any`.
+    #[test]
+    fn struct_does_not_round_trip_through_fixint() {
+        let bytes = serde_fixint::to_vec(&sample_map()).expect("fixint writes it");
+        assert!(serde_fixint::from_slice::<CachedClassMap>(&bytes).is_err());
+    }
+
+    /// The fix: the cache stores a JSON string, which round-trips through fixint intact.
+    #[test]
+    fn cached_entry_round_trips_through_fixint() {
+        let m = sample_map();
+        let s = encode_class_map(&m).unwrap();
+        let bytes = serde_fixint::to_vec(&s).unwrap();
+        let back: String = serde_fixint::from_slice(&bytes).unwrap();
+        let got = decode_class_map(&back).unwrap();
+        assert_eq!(got.fields, m.fields);
+        assert_eq!(got.name, m.name);
+        assert_eq!(got.timestamp, m.timestamp);
     }
 }

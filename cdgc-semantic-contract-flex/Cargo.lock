@@ -553,11 +553,12 @@ dependencies = [
 
 [[package]]
 name = "cdgc_semantic_contract"
-version = "1.1.0"
+version = "1.1.1"
 dependencies = [
  "anyhow",
  "httpmock",
  "pdk",
+ "pdk-serde-fixint",
  "pdk-test",
  "reqwest",
  "serde",
